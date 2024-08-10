@@ -10,8 +10,9 @@ def generate_prompt(
     ):
 
   n_words_per_list = len(WORD_CATEGORIES[WORD_ORDER[0]])
-  n_lists = len(WORD_CATEGORIES.keys())
+  n_lists = len(WORD_ORDER)
   words = []
+  word_idxes = np.zeros(n_lists)
   for i in range(n_lists):
     if i % n_words_correlated == 0:
       word_idx = np.random.randint(n_words_per_list)
@@ -33,7 +34,16 @@ def generate_prompt(
   return prompt
 
 def generate_prompts(n, n_words_correlated):
-  return [generate_prompt(n_words_correlated) for i in range(n)]
+  prompts = set()
+
+  while len(prompts) < n:
+    prompt = generate_prompt(n_words_correlated)
+    if prompt not in prompts:
+        prompts.add(prompt)
+
+  return list(prompts)
+
+
 
 # Push representations through model
 def encode_data(tokenizer, N, data, batch_size, max_length, device):
@@ -72,31 +82,12 @@ def last_token_rep(x, attention_mask, padding='right'):
 
 
 def get_reps_from_llm(
-    model_name,
-    model_step,
+    model,
+    tokenizer,
     data,
     device,
     batch_size
 ):
-  # Load the model and tokenizer
-  tokenizer = AutoTokenizer.from_pretrained(model_name,
-                                            trust_remote_code=True,
-                                            use_fast=True,
-                                            revision=f"step{model_step}"
-                                            )
-  model = AutoModelForCausalLM.from_pretrained(model_name,
-                                              trust_remote_code=True,
-                                              load_in_8bit=True,
-                                               revision=f"step{model_step}"
-                                              )
-  # Some idiosyncrasies of models
-  if 'Llama' in model_name:
-      tokenizer.padding_side = "right"
-  if 'opt' not in model_name:
-      tokenizer.pad_token = tokenizer.eos_token
-  if 'OLMo' in model_name:
-      model.config.max_position_embeddings = model.config.max_sequence_length
-
   # Tokenize the text data
   encodings = encode_data(tokenizer,
                           len(data),
@@ -106,7 +97,6 @@ def get_reps_from_llm(
                           device
                           )
 
-  model.eval()
   with torch.no_grad():
     representations = []
     surprisals = []
@@ -121,7 +111,6 @@ def get_reps_from_llm(
     representations = [torch.cat(batches, dim=0) for batches in representations]
     # print('Layer 1 reps shape: ')
     # print(representations[1].shape)
-  print(representations[0].device)
   return representations
 
 def calculate_ids(
@@ -135,14 +124,43 @@ def calculate_ids(
   for method in methods:
       IDS[method] = []
       print(f'computing ID for {method}')
+      
       for layer_rep in tqdm(representations[1:]): # skip the positional embedding layer
-          id = methods[method].fit_transform(layer_rep)
-          IDS[method].append(id)
+          try:
+            id = methods[method].fit_transform(layer_rep)
+            IDS[method].append(id)
+          except:
+            IDS[method].append(-1)
 
   return IDS
+
+def get_model_and_tokenizer(model_name, model_step):
+    # Load the model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_name,
+                                                trust_remote_code=True,
+                                                use_fast=True,
+                                                revision=f"step{model_step}"
+                                                )
+    model = AutoModelForCausalLM.from_pretrained(model_name,
+                                                trust_remote_code=True,
+                                                load_in_8bit=True,
+                                                revision=f"step{model_step}"
+                                                )
+    # Some idiosyncrasies of models
+    if 'Llama' in model_name:
+        tokenizer.padding_side = "right"
+    if 'opt' not in model_name:
+        tokenizer.pad_token = tokenizer.eos_token
+    if 'OLMo' in model_name:
+        model.config.max_position_embeddings = model.config.max_sequence_length
+    model.eval()
+
+    return model, tokenizer
+    
 def run_pipeline(
-    model_name,
-    model_step,
+    model,
+    tokenizer,
+    data,
     n_words_correlated,
     n_reps,
     methods,
@@ -150,12 +168,10 @@ def run_pipeline(
     device,
 ):
   with torch.no_grad():
-    data = generate_prompts(n_reps, n_words_correlated)
-    representations = get_reps_from_llm(model_name, model_step, data, device, batch_size)
+    representations = get_reps_from_llm(model, tokenizer, data, device, batch_size)
     ids = calculate_ids(representations, methods)
     return ids
 
-    
 def load_results(results_dir):
     results = {}
     for model_name in os.listdir(results_dir):
@@ -180,3 +196,5 @@ def load_results(results_dir):
                             results[model_name][checkpoint_step][n_words_correlated][key] = data['ids'].item()[key]
     return results
 
+
+print(generate_prompts(10, 2))
