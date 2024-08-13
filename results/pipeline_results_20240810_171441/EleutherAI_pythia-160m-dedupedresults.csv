@@ -1,4 +1,4 @@
-,index,model_name,checkpoint_step,n_words_correlated,method,layer_num,id
+,index,model_name,checkpoint_step,n_words_correlated,method,layer_num,intrinsic_dimension
 0,0,EleutherAI/pythia-160m-deduped,16,1,mle,0,30.401704668858407
 1,1,EleutherAI/pythia-160m-deduped,16,1,mle,1,31.196626281875194
 2,2,EleutherAI/pythia-160m-deduped,16,1,mle,2,30.336640509223376

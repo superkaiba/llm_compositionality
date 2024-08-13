@@ -3,7 +3,7 @@ import os
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
-from constants import *
+from constants_2 import *
 
 def generate_prompt(
     n_words_correlated, # number of words in sentence that should be grouped together
@@ -119,7 +119,7 @@ def calculate_ids(
 ):
     # For each layer, get nonlinear ID estimate
   IDS = {} # {'id method name' : list of ids over layers}
-
+  representations = [rep.to(torch.float16) for rep in representations]
   # Compute ID
   for method in methods:
       IDS[method] = []
@@ -129,7 +129,8 @@ def calculate_ids(
           try:
             id = methods[method].fit_transform(layer_rep)
             IDS[method].append(id)
-          except:
+          except Exception as e:
+            print(e)
             IDS[method].append(-1)
 
   return IDS
@@ -139,12 +140,14 @@ def get_model_and_tokenizer(model_name, model_step):
     tokenizer = AutoTokenizer.from_pretrained(model_name,
                                                 trust_remote_code=True,
                                                 use_fast=True,
-                                                revision=f"step{model_step}"
+                                                revision=f"step{model_step}",
+                                                torch_dtype=torch.bfloat16
                                                 )
     model = AutoModelForCausalLM.from_pretrained(model_name,
                                                 trust_remote_code=True,
                                                 load_in_8bit=True,
-                                                revision=f"step{model_step}"
+                                                revision=f"step{model_step}",
+                                                torch_dtype=torch.bfloat16
                                                 )
     # Some idiosyncrasies of models
     if 'Llama' in model_name:
