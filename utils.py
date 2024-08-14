@@ -4,10 +4,13 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 from constants_2 import *
+import gc
+import random
 
 def generate_prompt(
     n_words_correlated, # number of words in sentence that should be grouped together
-    ):
+    shuffle=False
+):
 
   n_words_per_list = len(WORD_CATEGORIES[WORD_ORDER[0]])
   n_lists = len(WORD_ORDER)
@@ -33,11 +36,11 @@ def generate_prompt(
 
   return prompt
 
-def generate_prompts(n, n_words_correlated):
+def generate_prompts(n, n_words_correlated, shuffle=False):
   prompts = set()
 
   while len(prompts) < n:
-    prompt = generate_prompt(n_words_correlated)
+    prompt = generate_prompt(n_words_correlated, shuffle)
     if prompt not in prompts:
         prompts.add(prompt)
 
@@ -80,6 +83,17 @@ def last_token_rep(x, attention_mask, padding='right'):
     last_token_rep = x[torch.arange(x.size(0)), indices] if padding=='right' else x[torch.arange(x.size(0)), -1]
     return last_token_rep.cpu()
 
+def debug_memory():
+    import collections, gc, resource, torch
+    print('maxrss = {}'.format(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
+    tensors = collections.Counter(
+        (str(o.device), str(o.dtype), tuple(o.shape))
+        for o in gc.get_objects()
+        if torch.is_tensor(o)
+    )
+    for line in sorted(tensors.items()):
+        print('{}\t{}'.format(*line))
 
 def get_reps_from_llm(
     model,
@@ -99,18 +113,22 @@ def get_reps_from_llm(
 
   with torch.no_grad():
     representations = []
-    surprisals = []
     for batch in tqdm(encodings):
         output = model(batch['input_ids'], attention_mask=batch['attention_mask'], output_hidden_states=True)
-        # print(list(output.keys()))
-        surprisals.append(output['logits']) # this may be wrong
         hiddens = output['hidden_states']
         pooled_output = tuple([last_token_rep(layer, batch['attention_mask'], padding=tokenizer.padding_side).cpu() for layer in hiddens])
         representations.append(pooled_output)
+        # torch.cuda.empty_cache()
+        # gc.collect()
+        # del output
+        # del hiddens
+
+        # debug_memory()
     representations = [list(batch) for batch in zip(*representations)]
     representations = [torch.cat(batches, dim=0) for batches in representations]
-    # print('Layer 1 reps shape: ')
-    # print(representations[1].shape)
+    # Transfer representations to CPU
+    
+  
   return representations
 
 def calculate_ids(
@@ -199,5 +217,21 @@ def load_results(results_dir):
                             results[model_name][checkpoint_step][n_words_correlated][key] = data['ids'].item()[key]
     return results
 
+def load_prompts(n_words_correlated, data_dir, shuffle=False):
+    with open(f'{data_dir}/train_prompts_{n_words_correlated}_words_correlated.txt', 'r') as f:
+        train_prompts = f.read().splitlines()
+    with open(f'{data_dir}/test_prompts_{n_words_correlated}_words_correlated.txt', 'r') as f:
+        test_prompts = f.read().splitlines()
+    if shuffle:
+        for i in range(len(train_prompts)):
+            train_prompts[i] = train_prompts[i].split(" ")
+            random.shuffle(train_prompts[i])
+            train_prompts[i] = " ".join(train_prompts[i])
+        for i in range(len(test_prompts)):
+            test_prompts[i] = test_prompts[i].split(" ")
+            random.shuffle(test_prompts[i])
+            test_prompts[i] = " ".join(test_prompts[i])
 
-print(generate_prompts(10, 2))
+    
+    return train_prompts, test_prompts
+
