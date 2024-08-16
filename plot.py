@@ -238,7 +238,8 @@ if __name__ == "__main__":
         "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/final_ordered_20240815_013151", 
         "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/final_shuffled_20240815_013501"
         )
-    plot_id_over_checkpoint(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
-    plot_final_layer_id_over_time(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
-    # plot_compositionality_over_time(args.results_path, args.save_dir)
+    # plot_id_over_checkpoint(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    # plot_final_layer_id_over_time(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    # # plot_compositionality_over_time(args.results_path, args.save_dir)
+    plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
 # python plot.py --results_path /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329/EleutherAI_pythia-1.4b-dedupedresults.csv --save_dir /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329

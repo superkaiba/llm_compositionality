@@ -21,7 +21,7 @@ export HF_HOME="/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/hu
 export HF_DATASETS_CACHE="/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/hugging_face_cache"
 export TRANSFORMERS_CACHE="/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/hugging_face_cache"
 
-python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 6.9b --shuffle --exp_name final_shuffled_$current_time
+# python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 6.9b --shuffle --exp_name final_shuffled_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 410m --shuffle --exp_name final_shuffled_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 70m --shuffle --exp_name final_shuffled_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 160m --shuffle --exp_name final_shuffled_$current_time
@@ -29,7 +29,7 @@ python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --m
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 1b --shuffle --exp_name final_shuffled_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 1.4b --shuffle --exp_name final_shuffled_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 2.8b --shuffle --exp_name final_shuffled_$current_time
-python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 12b --shuffle --exp_name final_shuffled_$current_time
+# python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 12b --shuffle --exp_name final_shuffled_$current_time
 
 python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 6.9b --exp_name final_ordered_$current_time   
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 410m --exp_name final_ordered_$current_time
@@ -39,4 +39,4 @@ python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --m
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 1b --exp_name final_ordered_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 1.4b --exp_name final_ordered_$current_time
 # python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 2.8b --exp_name final_ordered_$current_time
-python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 12b --exp_name final_ordered_$current_time    
+# python /home/mila/t/thomas.jiralerspong/llm_compositionality/run_pipeline.py --model_size 12b --exp_name final_ordered_$current_time    
