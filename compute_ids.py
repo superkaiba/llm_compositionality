@@ -86,6 +86,7 @@ METHODS = {
     "pca": skdim.id.lPCA(),
     "pr": skdim.id.lPCA(ver="participation_ratio"),
     "2nn": skdim.id.TwoNN(),
+    "pca_ratio_099": skdim.id.lPCA(ver="ratio", alphaRatio=0.99),
 }
 
 def parse_arguments():

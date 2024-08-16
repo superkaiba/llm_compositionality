@@ -224,11 +224,86 @@ def plot_id_over_layers(combined_results, save_dir):
                     ax.legend(title='N Words Correlated', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
         
         plt.tight_layout()
-        save_path = os.path.join(save_dir, f'id_over_layers_{model_size}.png')
-        plt.savefig(save_path, bbox_inches='tight')
+        save_path_png = os.path.join(save_dir, f'id_over_layers_{model_size}.png')
+        save_path_pdf = os.path.join(save_dir, f'id_over_layers_{model_size}.pdf')
+        plt.savefig(save_path_png, bbox_inches='tight')
+        plt.savefig(save_path_pdf, bbox_inches='tight')
         plt.close()
     
     print(f"ID over layers plots saved in {save_dir}")
+
+def plot_id_over_time_per_layer(combined_results, save_dir):
+    print("Plotting ID over time per layer...")
+    
+    # Create save directory if it doesn't exist
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Get unique values for each parameter
+    model_sizes = combined_results['model_size'].unique()
+    methods = combined_results['method'].unique()
+    n_words_correlated_list = sorted(combined_results['n_words_correlated'].unique())
+    
+    # Color palette for n_words_correlated
+    colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated_list)))
+    
+    for model_size in model_sizes:
+        # Get number of layers
+        num_layers = combined_results[combined_results['model_size'] == model_size]['layer_num'].max() + 1
+        
+        # Create subplots
+        fig, axes = plt.subplots(nrows=num_layers, ncols=len(methods), figsize=(6*len(methods), 4*num_layers), squeeze=False)
+        fig.suptitle(f'ID over Time - {model_size}', fontsize=16)
+        
+        for layer in range(num_layers):
+            for col, method in enumerate(methods):
+                ax = axes[layer, col]
+                
+                # Filter data for current model size, method, and layer
+                data = combined_results[(combined_results['model_size'] == model_size) & 
+                                        (combined_results['method'] == method) &
+                                        (combined_results['layer_num'] == layer)]
+                
+                if data.empty:
+                    ax.text(0.5, 0.5, 'No Data', ha='center', va='center')
+                    continue
+                
+                for i, n_words in enumerate(n_words_correlated_list):
+                    # Filter data for current n_words_correlated
+                    n_words_data = data[data['n_words_correlated'] == n_words]
+                    
+                    if n_words_data.empty:
+                        continue
+                    
+                    # Plot ordered data
+                    ordered_data = n_words_data[~n_words_data['is_shuffled']]
+                    ax.plot(ordered_data['checkpoint_step'], ordered_data['id'], 
+                            label=f'{n_words} words (ordered)', 
+                            color=colors[i], linestyle='-', marker='o', markersize=4)
+                    
+                    # Plot shuffled data
+                    shuffled_data = n_words_data[n_words_data['is_shuffled']]
+                    ax.plot(shuffled_data['checkpoint_step'], shuffled_data['id'], 
+                            label=f'{n_words} words (shuffled)', 
+                            color=colors[i], linestyle='--', marker='s', markersize=4)
+                
+                ax.set_title(f'{method.upper()} - Layer {layer}', fontsize=12)
+                ax.set_xlabel('Checkpoint Step', fontsize=10)
+                ax.set_ylabel('Intrinsic Dimension', fontsize=10)
+                ax.grid(True)
+                ax.tick_params(axis='both', which='major', labelsize=8)
+                
+                # Only add legend to the first subplot
+                if layer == 0 and col == 0:
+                    ax.legend(title='N Words Correlated', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+        
+        plt.tight_layout()
+        save_path_png = os.path.join(save_dir, f'id_over_time_per_layer_{model_size}.png')
+        save_path_pdf = os.path.join(save_dir, f'id_over_time_per_layer_{model_size}.pdf')
+        plt.savefig(save_path_png, bbox_inches='tight')
+        plt.savefig(save_path_pdf, bbox_inches='tight')
+        plt.close()
+    
+    print(f"ID over time per layer plots saved in {save_dir}")
 
 
 
@@ -242,4 +317,5 @@ if __name__ == "__main__":
     # plot_final_layer_id_over_time(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     # # plot_compositionality_over_time(args.results_path, args.save_dir)
     plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    plot_id_over_time_per_layer(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
 # python plot.py --results_path /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329/EleutherAI_pythia-1.4b-dedupedresults.csv --save_dir /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329
