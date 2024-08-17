@@ -5,296 +5,317 @@ import seaborn as sns
 import argparse
 import matplotlib.colors as mcolors
 from matplotlib import ticker
-def plot_results(results, save_dir):
 
-    fig, ax = plt.subplots(1, 1)
-    for model_name in results:
-        for checkpoint in results[model_name]:
+def load_and_merge_results(ordered_results_dir, shuffled_results_dir):
+    import os
+    import pandas as pd
+    
+    all_results = []
+    
+    # Process ordered results
+    for filename in os.listdir(ordered_results_dir):
+        if filename.endswith('.csv'):
+            file_path = os.path.join(ordered_results_dir, filename)
+            df = pd.read_csv(file_path)
+            df['is_shuffled'] = False
+            all_results.append(df)
+    
+    # Process shuffled results
+    for filename in os.listdir(shuffled_results_dir):
+        if filename.endswith('.csv'):
+            file_path = os.path.join(shuffled_results_dir, filename)
+            df = pd.read_csv(file_path)
+            df['is_shuffled'] = True
+            all_results.append(df)
+    
+    # Combine all results
+    combined_results = pd.concat(all_results, ignore_index=True)
+    
+    # Save combined results
+    output_path = os.path.join(os.path.dirname(ordered_results_dir), 'combined_results.csv')
+    combined_results.to_csv(output_path, index=False)
+    
+    return combined_results
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_id_over_checkpoint(combined_results, save_dir):
+
+    # Get unique values for grouping
+    model_sizes = combined_results['model_size'].unique()
+    methods = combined_results['method'].unique()
+    n_words_correlated = combined_results['n_words_correlated'].unique()
+
+    # Set up color palette
+    colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated)))
+
+    for model_size in model_sizes:
+        model_data = combined_results[combined_results['model_size'] == model_size]
+        
+        # Get the maximum layer for this specific model size
+        max_layer = model_data['layer_num'].max()
+        
+        # Calculate the number of rows and columns for subplots
+        n_rows = (max_layer + 1 + 2) // 3  # +2 to round up
+        n_cols = 3
+
+        # Create a subplot for each layer
+        fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(20, 5*n_rows), squeeze=False)
+        fig.suptitle(f'ID over Checkpoint Step for Model Size: {model_size}', fontsize=16)
+        print("Model size: ", model_size)
+        print("Max layer: ", max_layer)
+        for layer in range(max_layer + 1):
+            ax = axes[layer // 3, layer % 3]
+            layer_data = model_data[model_data['layer_num'] == layer]
+
+            for method in methods:
+                method_data = layer_data[layer_data['method'] == method]
+
+                for i, n_words in enumerate(n_words_correlated):
+                    data = method_data[method_data['n_words_correlated'] == n_words]
+                    
+                    # Plot ordered data
+                    ordered_data = data[~data['is_shuffled']]
+                    ax.plot(ordered_data['checkpoint_step'], ordered_data['id'], 
+                            label=f'{n_words} words (ordered)', color=colors[i], linestyle='-')
+                    
+                    # Plot shuffled data
+                    shuffled_data = data[data['is_shuffled']]
+                    ax.plot(shuffled_data['checkpoint_step'], shuffled_data['id'], 
+                            label=f'{n_words} words (shuffled)', color=colors[i], linestyle='--')
+
+            ax.set_title(f'Layer {layer}')
+            ax.set_xlabel('Checkpoint Step')
+            ax.set_ylabel('Intrinsic Dimension')
+            ax.legend(title='N Words Correlated', bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.grid(True)
+
+        # Remove any unused subplots
+        for i in range(max_layer + 1, n_rows * n_cols):
+            fig.delaxes(axes[i // 3, i % 3])
+
+        plt.tight_layout()
+        save_path = os.path.join(save_dir, f'id_over_checkpoint_{model_size}.png')
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+
+    print(f"Plots saved in {save_dir}")
+
+def plot_final_layer_id_over_time(combined_results, save_dir):
+    # Filter for the final layer of each model size
+    max_layers = combined_results.groupby('model_size')['layer_num'].max()
+    final_layer_data = combined_results[combined_results.apply(lambda row: row['layer_num'] == max_layers[row['model_size']], axis=1)]
+
+    # Get unique values for grouping
+    model_sizes = final_layer_data['model_size'].unique()
+    methods = final_layer_data['method'].unique()
+    n_words_correlated = final_layer_data['n_words_correlated'].unique()
+
+    # Set up color palette for model sizes
+    colors = plt.cm.viridis(np.linspace(0, 1, len(model_sizes)))
+
+    # Create a single figure with subplots for each method
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(20, 20))
+    fig.suptitle('ID in Final Layer Over Time for All Model Sizes', fontsize=20)
+
+    for idx, method in enumerate(methods):
+        ax = axes[idx // 2, idx % 2]
+        method_data = final_layer_data[final_layer_data['method'] == method]
+        
+        for i, model_size in enumerate(model_sizes):
+            model_method_data = method_data[method_data['model_size'] == model_size]
             
-            words_correlated_results = [results[model_name][checkpoint][n_words_correlated]['mle'][0] for n_words_correlated in results[model_name][checkpoint]]
-            for n_words_correlated in results[model_name][checkpoint]:
-                ax.plot(results[model_name][checkpoint][int(n_words_correlated)]['mle'], label=f"{model_name}_{checkpoint}_{n_words_correlated}")
-    
-    ax.legend()
-    ax.set_xlabel('Layer')
-    ax.set_ylabel('ID')
-    plt.savefig(f"{save_dir}/results.png")  
-    
+            for n_words in n_words_correlated:
+                data = model_method_data[model_method_data['n_words_correlated'] == n_words]
+                
+                # Plot ordered data
+                ordered_data = data[~data['is_shuffled']]
+                ax.plot(ordered_data['checkpoint_step'], ordered_data['id'], 
+                        label=f'{model_size} - {n_words} words (ordered)', 
+                        color=colors[i], linestyle='-')
+                
+                # Plot shuffled data
+                shuffled_data = data[data['is_shuffled']]
+                ax.plot(shuffled_data['checkpoint_step'], shuffled_data['id'], 
+                        label=f'{model_size} - {n_words} words (shuffled)', 
+                        color=colors[i], linestyle='--')
 
-def plot_compositionality_over_time(csv_file, save_dir):
-    # Read the CSV file
-    df = pd.read_csv(csv_file)
-    layer_numbers = df['layer_num'].unique()
-    n_layers = len(layer_numbers)
+        ax.set_title(f'{method.upper()} method', fontsize=16)
+        ax.set_xlabel('Checkpoint Step', fontsize=12)
+        ax.set_ylabel('Intrinsic Dimension', fontsize=12)
+        ax.grid(True)
 
-    # Calculate the number of rows and columns for subplots
-    n_cols = min(4, n_layers)  # Limit to 4 columns max
-    n_rows = (n_layers + n_cols - 1) // n_cols
-
-    # Set up the plot style
-    sns.set_style("whitegrid")
-    sns.set_palette("husl")
-
-    # Create subplots with a smaller figure size
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(10, 1.7 * n_rows))
-    fig.suptitle("Compositionality Over Time", fontsize=16, y=1.02)
-
-    # Flatten the axes array for easier indexing
-    axes = axes.flatten() if n_layers > 1 else [axes]
-
-    for idx, layer_number in enumerate(layer_numbers):
-        ax = axes[idx]
-        layer_df = df[df['layer_num'] == layer_number]
-        n_words_correlated = layer_df['n_words_correlated'].unique()
-
-        for n_words in n_words_correlated:
-            n_words_correlated_df = layer_df[layer_df['n_words_correlated'] == n_words]
-            ax.plot(n_words_correlated_df['checkpoint_step'], n_words_correlated_df['id'], 
-                    label=f"{n_words}", linewidth=1.5, alpha=0.8)
-
-        ax.set_xlabel('Training epoch', fontsize=8)
-        ax.set_ylabel('ID', fontsize=8)
-        ax.set_title(f"Layer {layer_number}", fontsize=10)
-        ax.tick_params(axis='both', which='major', labelsize=6)
-        ax.grid(True, linestyle='--', alpha=0.5)
-    # Set x-axis to log scale for each subplot
-    for ax in axes:
-        ax.set_xscale('log')
-        
-        # Adjust x-axis ticks for better readability in log scale
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: format(int(x), ',')))
-        ax.xaxis.set_major_locator(ticker.LogLocator(base=10, numticks=5))
-        
-        # Rotate x-axis labels for better fit
-        ax.tick_params(axis='x', rotation=45)
-    # Remove any unused subplots
-    for idx in range(n_layers, len(axes)):
-        fig.delaxes(axes[idx])
-
-    # Add a common legend
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', title='Number of correlated words', 
-               ncol=len(n_words_correlated), bbox_to_anchor=(0.5, 1.05), 
-               fontsize=8, title_fontsize=10)
-    
-    # Adjust layout and save
-    plt.tight_layout()
-    plt.savefig(f"{save_dir}/{csv_file.split('/')[-1].replace('/', '_')}_compositionality_over_time.png", dpi=300, bbox_inches='tight')
-    plt.close(fig)
-
-def plot_compositionality_gap_over_layers(csv_file, save_dir):
-    # Load the CSV data
-    df = pd.read_csv(csv_file)
-
-    # Group the data by model_name, checkpoint_step, method, and layer_num
-    grouped = df.groupby(['model_name', 'checkpoint_step', 'method', 'layer_num'])
-
-    # Calculate the difference in intrinsic dimension between the two n_words_correlated values
-    diff_df = grouped.apply(lambda x: x.loc[x['n_words_correlated'].idxmin(), 'id']
-                                    - x.loc[x['n_words_correlated'].idxmax(), 'id'])
-    diff_df = diff_df.reset_index(name='intrinsic_dimension_gap')
-
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(14, 6))
-    sns.set_style("whitegrid")
-
-    # Get the range of checkpoint steps for normalization
-    min_step = diff_df['checkpoint_step'].min()
-    max_step = diff_df['checkpoint_step'].max()
-
-    # Create a custom colormap from light blue to dark blue
-    cmap = mcolors.LinearSegmentedColormap.from_list("", ["lightblue", "darkblue"])
-    norm = mcolors.Normalize(vmin=min_step, vmax=max_step)
-
-    # Plot lines with varying color based on checkpoint step
-    for (model, method), group in diff_df.groupby(['model_name', 'method']):
-        sorted_group = group.sort_values(['checkpoint_step', 'layer_num'])
-        for checkpoint, checkpoint_group in sorted_group.groupby('checkpoint_step'):
-            color = cmap(norm(checkpoint))
-            plt.plot(checkpoint_group['layer_num'], checkpoint_group['intrinsic_dimension_gap'], 
-                     color=color, marker='o', markersize=4, linewidth=1.5)
-
-    # Add a single legend entry for each model-method combination
-    for (model, method) in diff_df.groupby(['model_name', 'method']).groups.keys():
-        plt.plot([], [], color='gray', label=f"{model} - {method}")
-
-    plt.xlabel('Layer Number')
-    plt.ylabel('Intrinsic Dimension Gap')
-    plt.title('Gap in Intrinsic Dimension vs. Layer Number')
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-
-    # Add colorbar
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar = plt.colorbar(sm, ax=ax, label='Checkpoint Step', pad=0.1)
+    # Create a single legend for the entire figure
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, title='Model Size - N Words Correlated', 
+               bbox_to_anchor=(1.05, 0.5), loc='center left')
 
     plt.tight_layout()
-    plt.savefig(f"{save_dir}/{csv_file.split('/')[-1].replace('/', '_')}_compositionality_gap_over_layers.png", 
-                bbox_inches='tight', dpi=300)
-    plt.close(fig)
-
-def convert_to_number(s):
-    """
-    Converts a string representing a number with 'm' (millions) or 'b' (billions) 
-    into its numerical form with commas as thousand separators.
-
-    Args:
-    s (str): The string to convert, e.g., "70m", "1.6b"
-
-    Returns:
-    str: The numerical form of the string, e.g., "70,000,000", "1,600,000,000"
-    """
-    multiplier = 1
-    
-    # Determine the multiplier based on the suffix
-    if 'm' in s.lower():
-        multiplier = 1_000_000
-        s = s.lower().replace('m', '')
-    elif 'b' in s.lower():
-        multiplier = 1_000_000_000
-        s = s.lower().replace('b', '')
-    
-    # Convert the remaining string to a float and apply the multiplier
-    number = float(s) * multiplier
-    
-    # Convert to integer and return formatted with commas
-    return int(number)
-
-def plot_id_over_sizes(save_dir):
-    import glob
-
-    # Function to extract model size from model name
-    def extract_model_size(model_name):
-        return convert_to_number(model_name.split('-')[1])
-        
-    # Read all CSV files
-    csv_files = glob.glob(f'{save_dir}/*.csv')
-    data = []
-
-    for file in csv_files:
-        df = pd.read_csv(file)
-        
-        # Get the model name and size
-        model_name = df['model_name'].iloc[0]
-        model_size = extract_model_size(model_name)
-        
-        # Get the ID of the final layer
-        final_layer_id = df[df['layer_num'] == df['layer_num'].max()]['id'].iloc[0]
-        
-        data.append({'model_size': model_size, 'final_layer_id': final_layer_id})
-
-    # Create a DataFrame from the collected data
-    plot_df = pd.DataFrame(data)
-
-    # Sort by model size
-    plot_df = plot_df.sort_values('model_size')
-
-    # Create the plot
-    plt.figure(figsize=(10, 6))
-    plt.plot(plot_df['model_size'], plot_df['final_layer_id'], marker='o')
-    plt.xlabel('Model Size')
-    plt.ylabel('Final Layer ID')
-    plt.title('Final Layer ID vs Model Size')
-    plt.xscale('log')  # Use log scale for x-axis if model sizes vary greatly
-    plt.grid(True)
-
-    # Add annotations for each point
-    for i, row in plot_df.iterrows():
-        plt.annotate(f"{row['model_size']}", (row['model_size'], row['final_layer_id']), 
-                    textcoords="offset points", xytext=(0,10), ha='center')
-
-    plt.tight_layout()
-    plt.savefig(f"{save_dir}/final_layer_id_vs_model_size.png") 
-
-
-def plot_id_diff_over_sizes(save_dir):
-    import glob
-
-    # Function to extract model size from model name
-    def extract_model_size(model_name):
-        return convert_to_number(model_name.split('-')[1])
-        
-    # Read all CSV files
-    csv_files = glob.glob(f'{save_dir}/*.csv')
-    data = []
-
-    for file in csv_files:
-        df = pd.read_csv(file)
-        
-        # Get the model name and size
-        model_name = df['model_name'].iloc[0]
-        model_size = extract_model_size(model_name)
-        
-        # Get the ID of the final layer
-        final_layer_df = df[df['layer_num'] == df['layer_num'].max()]
-        max_id = final_layer_df['id'].max()
-        min_id = final_layer_df['id'].min()
-        
-        final_layer_id_diff = max_id - min_id
-        
-        data.append({'model_size': model_size, 'final_layer_id_diff': final_layer_id_diff})
-
-    # Create a DataFrame from the collected data
-    plot_df = pd.DataFrame(data)
-    # Sort by model size
-    plot_df = plot_df.sort_values('model_size')
-
-    # Create the plot
-    plt.figure(figsize=(10, 6))
-    plt.plot(plot_df['model_size'], plot_df['final_layer_id_diff'], marker='o')
-    plt.xlabel('Model Size')
-    plt.ylabel('Final Layer ID Diff')
-    plt.title('Final Layer ID Diff vs Model Size')
-    plt.xscale('log')  # Use log scale for x-axis if model sizes vary greatly
-    plt.grid(True)
-
-    # Add annotations for each point
-    for i, row in plot_df.iterrows():
-        plt.annotate(f"{row['model_size']}", (row['model_size'], row['final_layer_id_diff']), 
-                    textcoords="offset points", xytext=(0,10), ha='center')
-
-    plt.tight_layout()
-    plt.savefig(f"{save_dir}/final_layer_id_diff_vs_model_size.png") 
-
-def plot_intrinsic_dimension_over_layers(csv_file, checkpoint_step, save_dir):
-    # Read the CSV file
-    df = pd.read_csv(csv_file)
-
-    # Filter the data for the specified checkpoint step
-    df_filtered = df[df['checkpoint_step'] == checkpoint_step]
-
-    # Get the model size
-    model_size = df['model_name'].iloc[0].split('-')[1]
-
-    # Create the plot
-    plt.figure(figsize=(12, 6))
-    sns.set_style("whitegrid")
-
-    # Plot lines for each n_words_correlated value
-    for n_words, group in df_filtered.groupby('n_words_correlated'):
-        plt.plot(group['layer_num'], group['id'], marker='o', label=f'{n_words} words')
-
-    plt.xlabel('Layer Number')
-    plt.ylabel('Intrinsic Dimension')
-    plt.title(f'Intrinsic Dimension over Layers (Checkpoint Step: {checkpoint_step})')
-    plt.legend(title='Words Correlated')
-    plt.tight_layout()
-
-    # Save the plot
-    plot_filename = f"intrinsic_dimension_over_layers_checkpoint_{checkpoint_step}_size_{model_size}.png"
-    plt.savefig(f"{save_dir}/{plot_filename}", dpi=300, bbox_inches='tight')
+    save_path = os.path.join(save_dir, f'final_layer_id_over_time_all_methods.png')
+    plt.savefig(save_path, bbox_inches='tight')
     plt.close()
 
-    print(f"Plot saved as {plot_filename}")
+    print(f"Final layer plot saved in {save_dir}")
 
+def plot_id_over_layers(combined_results, save_dir):
+    print("Plotting ID over layers...")
+    
+    # Ensure the save directory exists
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Get unique values for each parameter
+    checkpoint_steps = combined_results['checkpoint_step'].unique()
+    methods = combined_results['method'].unique()
+    n_words_correlated_list = combined_results['n_words_correlated'].unique()
+    model_sizes = combined_results['model_size'].unique()
+    
+    # Set up color palette for n_words_correlated
+    colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated_list)))
+    
+    for model_size in model_sizes:
+        # Create a single figure with subplots for each method and checkpoint
+        n_rows = len(methods)
+        n_cols = len(checkpoint_steps)
+        fig, axes = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(6*n_cols, 5*n_rows), squeeze=False)
+        fig.suptitle(f'ID over Layers - Model: {model_size}', fontsize=20)
+        
+        for row, method in enumerate(methods):
+            for col, checkpoint_step in enumerate(checkpoint_steps):
+                ax = axes[row, col]
+                
+                # Filter data for current checkpoint, method, and model size
+                data = combined_results[(combined_results['checkpoint_step'] == checkpoint_step) & 
+                                        (combined_results['method'] == method) &
+                                        (combined_results['model_size'] == model_size)]
+                
+                if data.empty:
+                    ax.text(0.5, 0.5, 'No Data', ha='center', va='center')
+                    continue
+                
+                for i, n_words in enumerate(n_words_correlated_list):
+                    # Filter data for current n_words_correlated
+                    n_words_data = data[data['n_words_correlated'] == n_words]
+                    
+                    if n_words_data.empty:
+                        continue
+                    
+                    # Plot ordered data
+                    ordered_data = n_words_data[~n_words_data['is_shuffled']]
+                    ax.plot(ordered_data['layer_num'], ordered_data['id'], 
+                            label=f'{n_words} words (ordered)', 
+                            color=colors[i], linestyle='-', marker='o', markersize=4)
+                    
+                    # Plot shuffled data
+                    shuffled_data = n_words_data[n_words_data['is_shuffled']]
+                    ax.plot(shuffled_data['layer_num'], shuffled_data['id'], 
+                            label=f'{n_words} words (shuffled)', 
+                            color=colors[i], linestyle='--', marker='s', markersize=4)
+                
+                ax.set_title(f'{method.upper()} - Checkpoint: {checkpoint_step}', fontsize=12)
+                ax.set_xlabel('Layer Number', fontsize=10)
+                ax.set_ylabel('Intrinsic Dimension', fontsize=10)
+                ax.grid(True)
+                ax.tick_params(axis='both', which='major', labelsize=8)
+                
+                # Only add legend to the first subplot
+                if row == 0 and col == 0:
+                    ax.legend(title='N Words Correlated', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+        
+        plt.tight_layout()
+        save_path_png = os.path.join(save_dir, f'id_over_layers_{model_size}.png')
+        save_path_pdf = os.path.join(save_dir, f'id_over_layers_{model_size}.pdf')
+        plt.savefig(save_path_png, bbox_inches='tight')
+        plt.savefig(save_path_pdf, bbox_inches='tight')
+        plt.close()
+    
+    print(f"ID over layers plots saved in {save_dir}")
+
+def plot_id_over_time_per_layer(combined_results, save_dir):
+    print("Plotting ID over time per layer...")
+    
+    # Create save directory if it doesn't exist
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Get unique values for each parameter
+    model_sizes = combined_results['model_size'].unique()
+    methods = combined_results['method'].unique()
+    n_words_correlated_list = sorted(combined_results['n_words_correlated'].unique())
+    
+    # Color palette for n_words_correlated
+    colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated_list)))
+    
+    for model_size in model_sizes:
+        # Get number of layers
+        num_layers = combined_results[combined_results['model_size'] == model_size]['layer_num'].max() + 1
+        
+        # Create subplots
+        fig, axes = plt.subplots(nrows=num_layers, ncols=len(methods), figsize=(6*len(methods), 4*num_layers), squeeze=False)
+        fig.suptitle(f'ID over Time - {model_size}', fontsize=16)
+        
+        for layer in range(num_layers):
+            for col, method in enumerate(methods):
+                ax = axes[layer, col]
+                
+                # Filter data for current model size, method, and layer
+                data = combined_results[(combined_results['model_size'] == model_size) & 
+                                        (combined_results['method'] == method) &
+                                        (combined_results['layer_num'] == layer)]
+                
+                if data.empty:
+                    ax.text(0.5, 0.5, 'No Data', ha='center', va='center')
+                    continue
+                
+                for i, n_words in enumerate(n_words_correlated_list):
+                    # Filter data for current n_words_correlated
+                    n_words_data = data[data['n_words_correlated'] == n_words]
+                    
+                    if n_words_data.empty:
+                        continue
+                    
+                    # Plot ordered data
+                    ordered_data = n_words_data[~n_words_data['is_shuffled']]
+                    ax.plot(ordered_data['checkpoint_step'], ordered_data['id'], 
+                            label=f'{n_words} words (ordered)', 
+                            color=colors[i], linestyle='-', marker='o', markersize=4)
+                    
+                    # Plot shuffled data
+                    shuffled_data = n_words_data[n_words_data['is_shuffled']]
+                    ax.plot(shuffled_data['checkpoint_step'], shuffled_data['id'], 
+                            label=f'{n_words} words (shuffled)', 
+                            color=colors[i], linestyle='--', marker='s', markersize=4)
+                
+                ax.set_title(f'{method.upper()} - Layer {layer}', fontsize=12)
+                ax.set_xlabel('Checkpoint Step', fontsize=10)
+                ax.set_ylabel('Intrinsic Dimension', fontsize=10)
+                ax.grid(True)
+                ax.tick_params(axis='both', which='major', labelsize=8)
+                
+                # Only add legend to the first subplot
+                if layer == 0 and col == 0:
+                    ax.legend(title='N Words Correlated', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+        
+        plt.tight_layout()
+        save_path_png = os.path.join(save_dir, f'id_over_time_per_layer_{model_size}.png')
+        save_path_pdf = os.path.join(save_dir, f'id_over_time_per_layer_{model_size}.pdf')
+        plt.savefig(save_path_png, bbox_inches='tight')
+        plt.savefig(save_path_pdf, bbox_inches='tight')
+        plt.close()
+    
+    print(f"ID over time per layer plots saved in {save_dir}")
+
+
+
+# We want to plot the id over time for each model size, n_words_correlated, and method
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Plot results')
-    parser.add_argument('--results_path', type=str, help='Path to results file')
-    parser.add_argument('--save_dir', type=str, help='Directory to save plots')
-    args = parser.parse_args()
-    plot_id_diff_over_sizes(args.save_dir)
-    plot_id_over_sizes(args.save_dir)
-    plot_compositionality_gap_over_layers(args.results_path, args.save_dir)
-    plot_intrinsic_dimension_over_layers(args.results_path, 143000, args.save_dir)
-    plot_compositionality_over_time(args.results_path, args.save_dir)
+    combined_results = load_and_merge_results(
+        "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/final_ordered_20240815_013151", 
+        "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/final_shuffled_20240815_013501"
+        )
+    # plot_id_over_checkpoint(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    # plot_final_layer_id_over_time(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    # # plot_compositionality_over_time(args.results_path, args.save_dir)
+    plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    plot_id_over_time_per_layer(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
 # python plot.py --results_path /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329/EleutherAI_pythia-1.4b-dedupedresults.csv --save_dir /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329

@@ -1,0 +1,4 @@
+model_size,checkpoint_step,n_words_correlated,layer_num,method,id
+6.9b,0,1,0,mle,
+6.9b,0,1,0,pca,0
+6.9b,0,1,0,pr,

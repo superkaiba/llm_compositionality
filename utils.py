@@ -124,9 +124,23 @@ def get_reps_from_llm(
         # del hiddens
 
         # debug_memory()
-    representations = [list(batch) for batch in zip(*representations)]
-    representations = [torch.cat(batches, dim=0) for batches in representations]
-    # Transfer representations to CPU
+    # This step can be slow due to memory operations and data restructuring
+    # Optimize by pre-allocating memory and using torch.stack instead of list comprehension and torch.cat
+    num_layers = len(representations[0])
+    num_samples = sum(batch[0].shape[0] for batch in representations)
+    
+    optimized_representations = []
+    for layer_idx in range(num_layers):
+        layer_tensor = torch.empty((num_samples, representations[0][layer_idx].shape[1]), dtype=representations[0][layer_idx].dtype, device='cpu')
+        start_idx = 0
+        for batch in representations:
+            batch_size = batch[layer_idx].shape[0]
+            layer_tensor[start_idx:start_idx+batch_size] = batch[layer_idx]
+            start_idx += batch_size
+        optimized_representations.append(layer_tensor)
+    
+    representations = optimized_representations
+    
     
   
   return representations
@@ -159,13 +173,15 @@ def get_model_and_tokenizer(model_name, model_step):
                                                 trust_remote_code=True,
                                                 use_fast=True,
                                                 revision=f"step{model_step}",
-                                                torch_dtype=torch.bfloat16
+                                                torch_dtype=torch.bfloat16,
+                                                device_map="auto"
                                                 )
     model = AutoModelForCausalLM.from_pretrained(model_name,
                                                 trust_remote_code=True,
                                                 load_in_8bit=True,
                                                 revision=f"step{model_step}",
-                                                torch_dtype=torch.bfloat16
+                                                torch_dtype=torch.bfloat16,
+                                                device_map="auto"
                                                 )
     # Some idiosyncrasies of models
     if 'Llama' in model_name:
