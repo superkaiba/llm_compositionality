@@ -20,14 +20,14 @@ parser = argparse.ArgumentParser(description='ID computation')
 # Data selection
 parser.add_argument('--dataset', type=int, choices=[1, 2, 3, 4])
 parser.add_argument('--method', type=str, default='gride')
-parser.add_argument('--epoch', type=int, choices=[0, 1, 2, 3, 4])
+parser.add_argument('--epoch', type=float, choices=[0, 0.125, 0.25, 1, 2, 3, 4])
 parser.add_argument('--random_seed', type=int, default=32)
 parser.add_argument('--step', type=int, default=None)
 args = parser.parse_args()
 
 np.random.seed(args.random_seed)
 
-epoch_to_ckpt = [0, 153600, 307200, 460800, 614400]
+epoch_to_ckpt = {0:0, 0.125:25600, 0.25:51200, 1:153600, 2:307200, 3:460800, 4:614400}
 ckpt = epoch_to_ckpt[args.epoch]
 filepath = CHECKPOINT_FORMAT.format(args.dataset, ckpt)
 
@@ -51,7 +51,7 @@ for layer, layer_reps in enumerate(reps):
     results['eigenspectrum'][int(layer)] = list(explained_variances)
     results['explained_var'][int(layer)] = 0.99
 
-all_results['pca'] = results 
+all_results['pca'] = results
 
 # TWONN
 results = {'id': [None for _ in reps], 'r': [None for _ in reps], 'err': [None for _ in reps]}
@@ -71,7 +71,7 @@ for layer, layer_reps in enumerate(reps):
     except IndexError:
         continue
 
-all_results['twonn'] = results 
+all_results['twonn'] = results
 
 # MLE
 results = {'id': [None for _ in reps]}
@@ -82,7 +82,7 @@ for layer, layer_reps in enumerate(reps):
     except IndexError:
         continue
 
-all_results['mle'] = results 
+all_results['mle'] = results
 
 # GRIDE
 results = {layer: {'id': [],
@@ -90,14 +90,17 @@ results = {layer: {'id': [],
                     'r': []
                     } for layer in range(1, len(reps) + 1)}
 for layer, layer_reps in enumerate(reps):
-    _data = data.Data(layer_reps)
-    _data.remove_identical_points()
+    try:
+        _data = data.Data(layer_reps)
+        _data.remove_identical_points()
 
-    # estimate ID
-    ids_scaling, ids_scaling_err, rs_scaling = _data.return_id_scaling_gride(range_max = 2**13)
-    results[layer + 1]['r'] = rs_scaling.tolist()
-    results[layer + 1]['err'] = ids_scaling_err.tolist()
-    results[layer + 1]['id'] = ids_scaling.tolist()
+        # estimate ID
+        ids_scaling, ids_scaling_err, rs_scaling = _data.return_id_scaling_gride(range_max = 2**13)
+        results[layer + 1]['r'] = rs_scaling.tolist()
+        results[layer + 1]['err'] = ids_scaling_err.tolist()
+        results[layer + 1]['id'] = ids_scaling.tolist()
+    except:
+        continue
 
 all_results['gride'] = results
 

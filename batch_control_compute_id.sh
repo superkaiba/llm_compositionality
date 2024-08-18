@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for epoch in 0 1 2 3 4
+for epoch in 0.125 0.25 #0 1 2 3 4
 do
     for dataset in 1 2 3 4
     do
