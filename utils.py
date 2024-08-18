@@ -174,14 +174,16 @@ def get_model_and_tokenizer(model_name, model_step):
                                                 use_fast=True,
                                                 revision=f"step{model_step}",
                                                 torch_dtype=torch.bfloat16,
-                                                device_map="auto"
+                                                device_map="auto",
+                                                force_download=True
                                                 )
     model = AutoModelForCausalLM.from_pretrained(model_name,
                                                 trust_remote_code=True,
                                                 load_in_8bit=True,
                                                 revision=f"step{model_step}",
                                                 torch_dtype=torch.bfloat16,
-                                                device_map="auto"
+                                                device_map="auto",
+                                                force_download=True
                                                 )
     # Some idiosyncrasies of models
     if 'Llama' in model_name:

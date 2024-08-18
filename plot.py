@@ -31,6 +31,11 @@ def load_and_merge_results(ordered_results_dir, shuffled_results_dir):
     # Combine all results
     combined_results = pd.concat(all_results, ignore_index=True)
     
+    # Sort the combined results
+    combined_results = combined_results.sort_values(
+        by=['model_size', 'checkpoint_step', 'n_words_correlated', 'layer_num']
+    )
+    
     # Save combined results
     output_path = os.path.join(os.path.dirname(ordered_results_dir), 'combined_results.csv')
     combined_results.to_csv(output_path, index=False)
@@ -166,10 +171,10 @@ def plot_id_over_layers(combined_results, save_dir):
     os.makedirs(save_dir, exist_ok=True)
     
     # Get unique values for each parameter
-    checkpoint_steps = combined_results['checkpoint_step'].unique()
+    checkpoint_steps = sorted(combined_results['checkpoint_step'].unique())
     methods = combined_results['method'].unique()
-    n_words_correlated_list = combined_results['n_words_correlated'].unique()
-    model_sizes = combined_results['model_size'].unique()
+    n_words_correlated_list = sorted(combined_results['n_words_correlated'].unique())
+    model_sizes = combined_results['model_size'].unique()# Sort by numeric value
     
     # Set up color palette for n_words_correlated
     colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated_list)))
@@ -229,8 +234,11 @@ def plot_id_over_layers(combined_results, save_dir):
         plt.savefig(save_path_png, bbox_inches='tight')
         plt.savefig(save_path_pdf, bbox_inches='tight')
         plt.close()
+        
+        print(f"Saved ID over layers plot for {model_size} model as PNG: {save_path_png}")
+        print(f"Saved ID over layers plot for {model_size} model as PDF: {save_path_pdf}")
     
-    print(f"ID over layers plots saved in {save_dir}")
+    print(f"All ID over layers plots saved in {save_dir}")
 
 def plot_id_over_time_per_layer(combined_results, save_dir):
     print("Plotting ID over time per layer...")
@@ -302,8 +310,12 @@ def plot_id_over_time_per_layer(combined_results, save_dir):
         plt.savefig(save_path_png, bbox_inches='tight')
         plt.savefig(save_path_pdf, bbox_inches='tight')
         plt.close()
+        
+        print(f"Saved ID over time per layer plot for {model_size} model:")
+        print(f"  - PNG: {save_path_png}")
+        print(f"  - PDF: {save_path_pdf}")
     
-    print(f"ID over time per layer plots saved in {save_dir}")
+    print(f"All ID over time per layer plots saved in {save_dir}")
 
 
 
@@ -316,6 +328,7 @@ if __name__ == "__main__":
     # plot_id_over_checkpoint(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     # plot_final_layer_id_over_time(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     # # plot_compositionality_over_time(args.results_path, args.save_dir)
-    plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     plot_id_over_time_per_layer(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+
 # python plot.py --results_path /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329/EleutherAI_pythia-1.4b-dedupedresults.csv --save_dir /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329
