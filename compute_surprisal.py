@@ -93,5 +93,5 @@ results = {'per_token_train_surprisal_sequence': train_surp,
            'avg_per_token_test_surprisal_corpus': avg_test_surprisal
            }
 
-with open(f'/home/echeng/llm_compositionality/data/surprisals/{args.model_name.replace("/", "_")}_{args.dataset}_words_correlated.json', 'w') as f:
+with open(f'/home/echeng/llm_compositionality/data/surprisals/{args.model_name.replace("/", "_")}_step{ckpt}_{args.dataset}_words_correlated.json', 'w') as f:
     json.dump(results, f)
