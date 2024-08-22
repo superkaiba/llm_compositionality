@@ -14,14 +14,13 @@ ID_MODELS = ['70m', '160m', '410m', '1b', '1.4b', '2.8b', '6.9b']
 ALPHAS = {'70m': 0, '410m': 1, '1b': 2, '1.4b': 3, '2.8b': 4, '6.9b': 5}
 STEPS = SUMMARY['step'].unique()
 
-RESULTS_PATH = 'results/ordered/results_'
-
 colormap = plt.cm.viridis  #or any other colormap
 normalize = matplotlib.colors.Normalize(vmin=0, vmax=5)
 
 
 def get_results(task, model_size):
-    cond = (SUMMARY['task'] == task) & (SUMMARY['model_size'] == model_size)
+    cond = (SUMMARY['task'] == task) & (SUMMARY['model_size']
+                                        == model_size) & (SUMMARY['shot'] == 5)
     task_perf = SUMMARY[cond].get(key=[
         'step', 'acc', 'acc_stderr', 'likelihood_difference',
         'likelihood_difference_stderr'
@@ -40,7 +39,76 @@ def get_results(task, model_size):
     return result_dict
 
 
-def get_corr():
+def get_results_id_perf():
+
+    result_dict = {
+        'acc': [],
+        'acc_stderr': [],
+        'likelihood_difference': [],
+        'likelihood_difference_stderr': [],
+        'method': [],
+        'layer_num': [],
+        'ordered_id': [],
+        'shuffled_id': [],
+        'checkpoint_step': [],
+        'model_size': [],
+        'task': [],
+        'shot': []
+    }
+    for model_size in MODELS:
+        print(model_size)
+        id_result_ordered = pd.read_csv(
+            f'results/ordered/results_{model_size}.csv')
+        id_result_shuffled = pd.read_csv(
+            f'results/shuffled/results_{model_size}.csv')
+        for layer_num in id_result_ordered['layer_num'].unique():
+            for method in id_result_ordered['method'].unique():
+                for n in id_result_ordered['n_words_correlated'].unique():
+                    for shot in [0, 5]:
+                        for task in TASKS:
+                            for step in STEPS:
+                                task_cond = (SUMMARY['task'] == task) & (
+                                    SUMMARY['model_size']
+                                    == model_size) & (SUMMARY['shot'] == shot)
+                                id_cond = (
+                                    id_result_ordered['model_size']
+                                    == model_size
+                                ) & (id_result_ordered['checkpoint_step']
+                                     == step) & (
+                                         id_result_ordered['layer_num']
+                                         == layer_num) & (
+                                             id_result_ordered['method']
+                                             == method) & (id_result_ordered[
+                                                 'n_words_correlated'] == n)
+                                if len(id_cond) == 1:
+                                    result_dict['shot'].append(shot)
+                                    result_dict['model_size'].append(
+                                        model_size)
+                                    result_dict['task'].append(task)
+                                    result_dict['step'].append(step)
+                                    result_dict['acc'].append(
+                                        SUMMARY[task_cond]['acc'])
+                                    result_dict['acc_stderr'].append(
+                                        SUMMARY[task_cond]['acc_stderr'])
+                                    result_dict[
+                                        'likelihood_difference'].append(
+                                            SUMMARY[task_cond]
+                                            ['likelihood_difference'])
+                                    result_dict[
+                                        'likelihood_difference_stderr'].append(
+                                            SUMMARY[task_cond]
+                                            ['likelihood_difference_stderr'])
+                                    result_dict['layer_num'].append(layer_num)
+                                    result_dict['method'].append(method)
+                                    result_dict['ordered_id'].append(
+                                        id_result_ordered[id_cond]['id'])
+                                    result_dict['shuffled_id'].append(
+                                        id_result_shuffled[id_cond]['id'])
+
+    return result_dict
+
+
+def get_corr(prompt_type="ordered"):
 
     def append_results(df_dict, **kwargs):
         for k, v in kwargs.items():
@@ -55,6 +123,7 @@ def get_corr():
         'layer_num': [],
         'corrcoef': []
     }
+    RESULTS_PATH = f'results/{prompt_type}/results_'
     for task in TASKS:
         if 'crows' in task:
             metric = 'likelihood_difference'
@@ -133,9 +202,61 @@ def plot():
                     pad_inches=3)
 
 
+def plot_perf_ID():
+    if not os.path.isdir('results/task_ID'):
+        os.mkdir('results/task_ID')
+
+    result = pd.read_csv('task_id_merged.csv')
+    tasks = result['task'].unique()
+    models = result['model_size'].unique()
+    methods = result['method'].unique()
+    steps = result['checkpoint_step'].unique()
+    shot = 0
+
+    acc_diff = {}
+    id_idff = {}
+
+    for task in tasks:
+        if 'crow' not in task:
+            for i, method in enumerate(methods):
+                fig, axs = plt.subplots(1, 4, figsize=(8, 5), sharex=True)
+                for model in models:
+                    last_layer = max(
+                        result[result['model'] == model]['layer_num'].unique())
+                    cond = (result['model'] == model) & (
+                        result['task']
+                        == task) & (result['layer_num'] == last_layer) & (
+                            result['method'] == method) & (result['shot']
+                                                           == shot)
+                    argsorted_steps = np.argsort(task[cond]['step'])
+                    sorted_steps = task[cond]['step'][argsorted_steps]
+                    ordered_id_series = task[cond]['ordered_id'][
+                        argsorted_steps]
+                    shuffled_id_series = task[cond]['shuffled_id'][
+                        argsorted_steps]
+                    acc = task[cond]['acc'][argsorted_steps]
+                    acc_stderr = task[cond]['acc_stderr'][argsorted_steps]
+
+                    acc_diff = acc[1:] - acc[:-1]
+                    id_diff = ordered_id_series[1:] - ordered_id_series[:-1]
+                    """
+                    axs[i].plot(list(sorted_steps), ordered_id_series)
+                    axs[i].errorbar(list(sorted_steps),
+                                    list(acc),
+                                    yerr=list(acc_stderr),
+                                    marker='o',
+                                    ls='-',
+                                    label=model,
+                                    color=colormap(normalize(ALPHAS[model])))
+                    """
+
+
 if __name__ == "__main__":
 
-    plot()
-    corr_results = get_corr()
-    df = pd.DataFrame(corr_results)
-    df.to_csv("task_id_corr.csv")
+    #plot()
+    #corr_results = get_corr()
+    #df = pd.DataFrame(corr_results)
+    #df.to_csv("task_id_corr_ordered_five.csv")
+    task_perf_id = get_results_id_perf()
+    df = pd.DataFrame(task_perf_id)
+    df.to_csv("task_id_merged.csv")
