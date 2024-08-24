@@ -25,8 +25,9 @@ os.environ['TRANSFORMERS_CACHE'] = "/home/mila/t/thomas.jiralerspong/llm_composi
 # CHECKPOINT_STEPS += [1000 * i for i in range(1, 144)]
 DATA_DIR = "/home/mila/t/thomas.jiralerspong/llm_compositionality/data"
 
-CHECKPOINT_STEPS = [0, 2, 64, 512, 2000, 4000, 8000, 16000, 32000, 64000, 143000]
+# CHECKPOINT_STEPS = [0, 2, 64, 512, 2000, 4000, 8000, 16000, 32000, 64000, 143000]
 # CHECKPOINT_STEPS = [1, 4, 8,16, 32, 128, 256,1000,3000,13000,53000, 103000,133000]
+CHECKPOINT_STEPS = [32000, 64000, 143000]
 N_WORDS_CORRELATED_LIST = [i for i in range(1, 5)]
 DEVICE = 'cuda'
 BATCH_SIZE = 64

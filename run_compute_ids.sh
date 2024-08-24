@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --partition=main-cpu,long-cpu
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --nodes=1
 #SBATCH --output=/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/slurm/compute_ids_slurm-%j.out
 
