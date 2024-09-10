@@ -6,10 +6,15 @@ import argparse
 import matplotlib.colors as mcolors
 from matplotlib import ticker
 
-def load_and_merge_results(ordered_results_dir, shuffled_results_dir):
+def load_and_merge_results(ordered_results_dir, shuffled_results_dir, recompute=False):
     import os
     import pandas as pd
-    
+    # Save combined results
+    output_path = os.path.join(os.path.dirname(ordered_results_dir), 'combined_results.csv')
+    if os.path.exists(output_path):
+        print(f"Combined results already exist at {output_path}. Skipping loading and merging.")
+        return pd.read_csv(output_path)
+
     all_results = []
     
     # Process ordered results
@@ -31,8 +36,11 @@ def load_and_merge_results(ordered_results_dir, shuffled_results_dir):
     # Combine all results
     combined_results = pd.concat(all_results, ignore_index=True)
     
-    # Save combined results
-    output_path = os.path.join(os.path.dirname(ordered_results_dir), 'combined_results.csv')
+    # Sort the combined results
+    combined_results = combined_results.sort_values(
+        by=['model_size', 'checkpoint_step', 'n_words_correlated', 'layer_num']
+    )
+    
     combined_results.to_csv(output_path, index=False)
     
     return combined_results
@@ -166,10 +174,10 @@ def plot_id_over_layers(combined_results, save_dir):
     os.makedirs(save_dir, exist_ok=True)
     
     # Get unique values for each parameter
-    checkpoint_steps = combined_results['checkpoint_step'].unique()
+    checkpoint_steps = sorted(combined_results['checkpoint_step'].unique())
     methods = combined_results['method'].unique()
-    n_words_correlated_list = combined_results['n_words_correlated'].unique()
-    model_sizes = combined_results['model_size'].unique()
+    n_words_correlated_list = sorted(combined_results['n_words_correlated'].unique())
+    model_sizes = combined_results['model_size'].unique()# Sort by numeric value
     
     # Set up color palette for n_words_correlated
     colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated_list)))
@@ -229,8 +237,11 @@ def plot_id_over_layers(combined_results, save_dir):
         plt.savefig(save_path_png, bbox_inches='tight')
         plt.savefig(save_path_pdf, bbox_inches='tight')
         plt.close()
+        
+        print(f"Saved ID over layers plot for {model_size} model as PNG: {save_path_png}")
+        print(f"Saved ID over layers plot for {model_size} model as PDF: {save_path_pdf}")
     
-    print(f"ID over layers plots saved in {save_dir}")
+    print(f"All ID over layers plots saved in {save_dir}")
 
 def plot_id_over_time_per_layer(combined_results, save_dir):
     print("Plotting ID over time per layer...")
@@ -302,9 +313,192 @@ def plot_id_over_time_per_layer(combined_results, save_dir):
         plt.savefig(save_path_png, bbox_inches='tight')
         plt.savefig(save_path_pdf, bbox_inches='tight')
         plt.close()
+        
+        print(f"Saved ID over time per layer plot for {model_size} model:")
+        print(f"  - PNG: {save_path_png}")
+        print(f"  - PDF: {save_path_pdf}")
     
-    print(f"ID over time per layer plots saved in {save_dir}")
+    print(f"All ID over time per layer plots saved in {save_dir}")
 
+def plot_min_max_id_over_model_sizes(combined_results, save_dir):
+    # Filter for the final checkpoint step
+    final_checkpoint = combined_results['checkpoint_step'].max()
+    final_data = combined_results[combined_results['checkpoint_step'] == final_checkpoint]
+
+    # Define model sizes and their numeric values
+    model_sizes = ['70m', '160m', '410m', '1b', '1.4b', '2.8b', '6.9b']
+    model_sizes_numeric = [70_000_000, 160_000_000, 410_000_000, 1_000_000_000, 1_400_000_000, 2_800_000_000, 6_900_000_000]
+    
+    # Filter data for only the model sizes we're interested in
+    final_data = final_data[final_data['model_size'].isin(model_sizes)]
+
+    methods = final_data['method'].unique()
+    n_words_correlated_list = sorted(final_data['n_words_correlated'].unique())
+
+    # Set up the plots
+    fig, axes = plt.subplots(len(methods), 3, figsize=(24, 8*len(methods)), sharex='col')
+    if len(methods) == 1:
+        axes = axes.reshape(1, -1)
+
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(n_words_correlated_list)))
+
+    for method_idx, method in enumerate(methods):
+        method_data = final_data[final_data['method'] == method]
+
+        for i, n_words in enumerate(n_words_correlated_list):
+            n_words_data = method_data[method_data['n_words_correlated'] == n_words]
+
+            for shuffle_status in [False, True]:
+                data = n_words_data[n_words_data['is_shuffled'] == shuffle_status]
+                
+                min_ids = []
+                max_ids = []
+                mean_ids = []
+                for size in model_sizes:
+                    size_data = data[data['model_size'] == size]
+                    if not size_data.empty:
+                        min_ids.append(size_data['id'].min())
+                        max_ids.append(size_data['id'].max())
+                        mean_ids.append(size_data['id'].mean())
+                    else:
+                        min_ids.append(np.nan)
+                        max_ids.append(np.nan)
+                        mean_ids.append(np.nan)
+
+                label = f'{n_words} words ({"Shuffled" if shuffle_status else "Ordered"})'
+                linestyle = '--' if shuffle_status else '-'
+                
+                # Plot min ID for model sizes
+                axes[method_idx, 0].plot(model_sizes_numeric, min_ids, marker='o', linestyle=linestyle, color=colors[i], 
+                                         label=label, alpha=0.7)
+                
+                # Plot max ID for model sizes
+                axes[method_idx, 1].plot(model_sizes_numeric, max_ids, marker='s', linestyle=linestyle, color=colors[i], 
+                                         label=label, alpha=0.7)
+                
+                # Plot mean ID for model sizes
+                axes[method_idx, 2].plot(model_sizes_numeric, mean_ids, marker='^', linestyle=linestyle, color=colors[i], 
+                                         label=label, alpha=0.7)
+
+        for col in range(3):
+            ax = axes[method_idx, col]
+            ax.set_title(f'{method.upper()} - {"Min" if col == 0 else "Max" if col == 1 else "Mean"} ID at Final Checkpoint', fontsize=14)
+            ax.set_ylabel('Intrinsic Dimension', fontsize=12)
+            ax.set_yscale('linear')
+            ax.set_xscale('linear')  # Changed to linear scale
+            ax.grid(True, which="both", ls="-", alpha=0.2)
+            ax.legend(fontsize=8, bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.tick_params(axis='both', which='major', labelsize=10)
+            ax.set_xlabel('Model Size (number of parameters)', fontsize=12)
+            ax.set_xticks(model_sizes_numeric)
+            ax.set_xticklabels(model_sizes, rotation=45)
+            ax.get_xaxis().set_major_formatter(ticker.ScalarFormatter())
+
+    plt.tight_layout()
+    save_path_png = os.path.join(save_dir, 'min_max_mean_id_over_model_sizes.png')
+    save_path_pdf = os.path.join(save_dir, 'min_max_mean_id_over_model_sizes.pdf')
+    plt.savefig(save_path_png, bbox_inches='tight')
+    plt.savefig(save_path_pdf, bbox_inches='tight')
+    plt.close()
+
+    print(f"Saved Min-Max-Mean ID over model sizes plot:")
+    print(f"  - PNG: {save_path_png}")
+    print(f"  - PDF: {save_path_pdf}")
+
+def plot_min_max_id_over_hidden_dimensions(combined_results, save_dir):
+    print("Plotting Min-Max-Mean ID over hidden dimensions...")
+    
+    # Ensure the save directory exists
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Define the mapping of model sizes to hidden dimensions
+    model_size_to_dim = {
+        '70m': 512,
+        '160m': 768,
+        '410m': 1024,
+        '1.4b': 2048,
+        '2.8b': 2560,
+        '6.9b': 4096
+    }
+    
+    # Filter the data for the specified model sizes
+    filtered_results = combined_results[combined_results['model_size'].isin(model_size_to_dim.keys())]
+    
+    # Get unique values for grouping
+    methods = filtered_results['method'].unique()
+    n_words_correlated = filtered_results['n_words_correlated'].unique()
+    hidden_dimensions = sorted([model_size_to_dim[size] for size in model_size_to_dim.keys()])
+    
+    # Set up color palette
+    colors = plt.cm.viridis(np.linspace(0, 1, len(n_words_correlated)))
+    
+    # Create a figure with subplots for each method
+    fig, axes = plt.subplots(nrows=len(methods), ncols=3, figsize=(30, 8*len(methods)), squeeze=False)
+    fig.suptitle('ID over Hidden Dimensions', fontsize=16)
+    
+    for method_idx, method in enumerate(methods):
+        method_data = filtered_results[filtered_results['method'] == method]
+        
+        for i, n_words in enumerate(n_words_correlated):
+            n_words_data = method_data[method_data['n_words_correlated'] == n_words]
+            
+            for shuffle_status in [False, True]:
+                data = n_words_data[n_words_data['is_shuffled'] == shuffle_status]
+                
+                min_ids = []
+                max_ids = []
+                mean_ids = []
+                for dim in hidden_dimensions:
+                    size = next(size for size, d in model_size_to_dim.items() if d == dim)
+                    size_data = data[data['model_size'] == size]
+                    if not size_data.empty:
+                        min_ids.append(size_data['id'].min())
+                        max_ids.append(size_data['id'].max())
+                        mean_ids.append(size_data['id'].mean())
+                    else:
+                        min_ids.append(np.nan)
+                        max_ids.append(np.nan)
+                        mean_ids.append(np.nan)
+
+                label = f'{n_words} words ({"Shuffled" if shuffle_status else "Ordered"})'
+                linestyle = '--' if shuffle_status else '-'
+                
+                # Plot min ID for hidden dimensions
+                axes[method_idx, 0].plot(hidden_dimensions, min_ids, marker='o', linestyle=linestyle, color=colors[i], 
+                                         label=label, alpha=0.7)
+                
+                # Plot max ID for hidden dimensions
+                axes[method_idx, 1].plot(hidden_dimensions, max_ids, marker='s', linestyle=linestyle, color=colors[i], 
+                                         label=label, alpha=0.7)
+                
+                # Plot mean ID for hidden dimensions
+                axes[method_idx, 2].plot(hidden_dimensions, mean_ids, marker='^', linestyle=linestyle, color=colors[i], 
+                                         label=label, alpha=0.7)
+
+        for col in range(3):
+            ax = axes[method_idx, col]
+            ax.set_title(f'{method.upper()} - {"Min" if col == 0 else "Max" if col == 1 else "Mean"} ID at Final Checkpoint', fontsize=14)
+            ax.set_ylabel('Intrinsic Dimension', fontsize=12)
+            ax.set_yscale('linear')
+            ax.set_xscale('linear')  # Changed to linear scale
+            ax.grid(True, which="both", ls="-", alpha=0.2)
+            ax.legend(fontsize=8, bbox_to_anchor=(1.05, 1), loc='upper left')
+            ax.tick_params(axis='both', which='major', labelsize=10)
+            ax.set_xlabel('Model Hidden Dimension', fontsize=12)
+            ax.set_xticks(hidden_dimensions)
+            ax.set_xticklabels(hidden_dimensions, rotation=45)
+            ax.get_xaxis().set_major_formatter(ticker.ScalarFormatter())
+
+    plt.tight_layout()
+    save_path_png = os.path.join(save_dir, 'min_max_mean_id_over_hidden_dimensions.png')
+    save_path_pdf = os.path.join(save_dir, 'min_max_mean_id_over_hidden_dimensions.pdf')
+    plt.savefig(save_path_png, bbox_inches='tight')
+    plt.savefig(save_path_pdf, bbox_inches='tight')
+    plt.close()
+
+    print(f"Saved Min-Max-Mean ID over hidden dimensions plot:")
+    print(f"  - PNG: {save_path_png}")
+    print(f"  - PDF: {save_path_pdf}")
 
 
 # We want to plot the id over time for each model size, n_words_correlated, and method
@@ -313,9 +507,12 @@ if __name__ == "__main__":
         "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/final_ordered_20240815_013151", 
         "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/final_shuffled_20240815_013501"
         )
+    plot_min_max_id_over_model_sizes(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    plot_min_max_id_over_hidden_dimensions(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     # plot_id_over_checkpoint(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     # plot_final_layer_id_over_time(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
     # # plot_compositionality_over_time(args.results_path, args.save_dir)
-    plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
-    plot_id_over_time_per_layer(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    # plot_id_over_time_per_layer(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+    # plot_id_over_layers(combined_results, "/home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/plots")
+
 # python plot.py --results_path /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329/EleutherAI_pythia-1.4b-dedupedresults.csv --save_dir /home/mila/t/thomas.jiralerspong/llm_compositionality/scratch/llm_compositionality/results/pipeline_results_20240811_141329
