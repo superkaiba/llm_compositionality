@@ -9,7 +9,7 @@ import random
 
 def generate_prompt(
     n_words_correlated, # number of words in sentence that should be grouped together
-    shuffle=False
+    shuffle=False,
 ):
 
   n_words_per_list = len(WORD_CATEGORIES[WORD_ORDER[0]])
@@ -36,9 +36,9 @@ def generate_prompt(
 
   return prompt
 
-def generate_prompts(n, n_words_correlated, shuffle=False):
+def generate_prompts(n, n_words_correlated, shuffle=False, rs=0):
   prompts = set()
-
+  random.seed(rs)
   while len(prompts) < n:
     prompt = generate_prompt(n_words_correlated, shuffle)
     if prompt not in prompts:
@@ -170,19 +170,19 @@ def calculate_ids(
 def get_model_and_tokenizer(model_name, model_step):
     # Load the model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_name,
-                                                trust_remote_code=True,
-                                                use_fast=True,
+                                                # trust_remote_code=True,
+                                                # use_fast=True,
                                                 revision=f"step{model_step}",
-                                                torch_dtype=torch.bfloat16,
-                                                device_map="auto",
+                                                # torch_dtype=torch.bfloat16,
+                                                # device_map="auto",
                                                 force_download=True
                                                 )
     model = AutoModelForCausalLM.from_pretrained(model_name,
-                                                trust_remote_code=True,
+                                                # trust_remote_code=True,
                                                 load_in_8bit=True,
                                                 revision=f"step{model_step}",
-                                                torch_dtype=torch.bfloat16,
-                                                device_map="auto",
+                                                # torch_dtype=torch.bfloat16,
+                                                # device_map="auto",
                                                 force_download=True
                                                 )
     # Some idiosyncrasies of models
@@ -235,10 +235,11 @@ def load_results(results_dir):
                             results[model_name][checkpoint_step][n_words_correlated][key] = data['ids'].item()[key]
     return results
 
-def load_prompts(n_words_correlated, data_dir, shuffle=False):
-    with open(f'{data_dir}/train_prompts_{n_words_correlated}_words_correlated.txt', 'r') as f:
+def load_prompts(n_words_correlated, data_dir, shuffle=False, rs=None):
+    rs_str = '' if rs is None else f"_rs{rs}"
+    with open(f'{data_dir}/train_prompts_{n_words_correlated}_words_correlated{rs_str}.txt', 'r') as f:
         train_prompts = f.read().splitlines()
-    with open(f'{data_dir}/test_prompts_{n_words_correlated}_words_correlated.txt', 'r') as f:
+    with open(f'{data_dir}/test_prompts_{n_words_correlated}_words_correlated{rs_str}.txt', 'r') as f:
         test_prompts = f.read().splitlines()
     if shuffle:
         for i in range(len(train_prompts)):

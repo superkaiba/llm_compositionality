@@ -1,111 +1,114 @@
-from mpl_toolkits.mplot3d import Axes3D
-from sklearn.datasets import make_swiss_roll
 from sklearn.decomposition import PCA
 import skdim
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.gridspec import GridSpec
-import pickle
 import numpy as np
 import torch
 from dadapy import data
 import argparse
 import json
+from tqdm import tqdm
 import pdb
+import os
 
 CHECKPOINT_FORMAT = '/home/echeng/llm_compositionality/data/saved_reps_post_finetune/prompts_{}_ckpt_{}_reps.pt' # data, step
+NEW_REPS_FORMAT = '/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{}/checkpoint_{}/representations/{}_representations_{}_words_correlated_rs{}.pt'
 
 parser = argparse.ArgumentParser(description='ID computation')
 
 # Data selection
-parser.add_argument('--dataset', type=int, choices=[1, 2, 3, 4])
-parser.add_argument('--method', type=str, default='gride')
-parser.add_argument('--epoch', type=float, choices=[0, 0.125, 0.25, 1, 2, 3, 4])
-parser.add_argument('--random_seed', type=int, default=32)
+parser.add_argument('--model_size', type=str)
+parser.add_argument('--dataset', type=int, choices=[1,2,3,4])
 parser.add_argument('--step', type=int, default=None)
 args = parser.parse_args()
 
-np.random.seed(args.random_seed)
 
-epoch_to_ckpt = {0:0, 0.125:25600, 0.25:51200, 1:153600, 2:307200, 3:460800, 4:614400}
-ckpt = epoch_to_ckpt[args.epoch]
-filepath = CHECKPOINT_FORMAT.format(args.dataset, ckpt)
+# epoch_to_ckpt = {0:0, 0.125:25600, 0.25:51200, 1:153600, 2:307200, 3:460800, 4:614400}
+# ckpt = epoch_to_ckpt[args.epoch]
+# filepath = CHECKPOINT_FORMAT.format(args.dataset, ckpt)
+model_str = f"{args.model_size}" if args.model_size == '14m' else f"{args.model_size}-deduped"
 
-reps = torch.load(filepath) # list (torch tensor)
-reps = [rep.numpy().astype(float) for rep in reps]
-reps = reps[1:]
-# pdb.set_trace()
+# Process one model, dataset combo.
+RESULTS = {}
 
-# initialise the Data class
-all_results = {}
+for mode in 'sane', 'shuffled':
 
-# PCA
-results = {'pca_id': [None for _ in reps],  'pr_id': [None for _ in reps], 'explained_var': [None for _ in reps], 'eigenspectrum': [None for _ in reps]}
+    results_each_rs = []
 
-for layer, layer_reps in enumerate(reps):
-    pca = PCA()
-    pca.fit(layer_reps)
-    explained_variances = pca.explained_variance_
-    results['pca_id'][int(layer)] = int(np.sum(np.cumsum(pca.explained_variance_ratio_) < 0.99))
-    results['pr_id'][layer] = sum(explained_variances)**2 / sum(explained_variances ** 2)
-    results['eigenspectrum'][int(layer)] = list(explained_variances)
-    results['explained_var'][int(layer)] = 0.99
+    for rs in tqdm(range(5)):
+        filepath = NEW_REPS_FORMAT.format(model_str, args.step, mode, args.dataset, rs)
 
-all_results['pca'] = results
+        reps = torch.load(filepath) # list (torch tensor)
+        reps = [rep.numpy().astype(float) for rep in reps]
+        reps = reps[1:]
+        # pdb.set_trace()
 
-# TWONN
-results = {'id': [None for _ in reps], 'r': [None for _ in reps], 'err': [None for _ in reps]}
+        # initialise the Data class
+        all_results = {}
 
-for layer, layer_reps in enumerate(reps):
-    try:
-        _data = data.Data(layer_reps)
-        _data.remove_identical_points()
+        # PCA
+        results = {'pca': [None for _ in reps],  'pr': [None for _ in reps]}
 
-        # estimate ID
-        id_twoNN, _, r = _data.compute_id_2NN()
-        print('Estimated twoNN with r=typical distance between point i and its neighbor')
-        print(id_twoNN)
-        print(r)
-        results['id'][layer] = float(id_twoNN)
-        results['r'][layer] = float(r)
-    except IndexError:
-        continue
+        for layer, layer_reps in tqdm(enumerate(reps)):
+            pca = PCA()
+            pca.fit(layer_reps)
+            explained_variances = pca.explained_variance_
+            results['pca'][int(layer)] = int(np.sum(np.cumsum(pca.explained_variance_ratio_) < 0.99))
+            results['pr'][layer] = sum(explained_variances)**2 / sum(explained_variances ** 2)
 
-all_results['twonn'] = results
+        all_results.update(results.copy())
+        del results
 
-# MLE
-results = {'id': [None for _ in reps]}
-for layer, layer_reps in enumerate(reps):
-    try:
-        mle = skdim.id.MLE()
-        results['id'][layer] = float(mle.fit_transform(layer_reps))
-    except IndexError:
-        continue
+        # TWONN
+        results = {'twonn': [None for _ in reps], 'twonn_r': [None for _ in reps]}
 
-all_results['mle'] = results
+        for layer, layer_reps in enumerate(reps):
+            try:
+                _data = data.Data(layer_reps)
+                _data.remove_identical_points()
 
-# GRIDE
-results = {layer: {'id': [],
-                    'err': [],
-                    'r': []
-                    } for layer in range(1, len(reps) + 1)}
-for layer, layer_reps in enumerate(reps):
-    try:
-        _data = data.Data(layer_reps)
-        _data.remove_identical_points()
+                # estimate ID
+                id_twoNN, _, r = _data.compute_id_2NN()
 
-        # estimate ID
-        ids_scaling, ids_scaling_err, rs_scaling = _data.return_id_scaling_gride(range_max = 2**13)
-        results[layer + 1]['r'] = rs_scaling.tolist()
-        results[layer + 1]['err'] = ids_scaling_err.tolist()
-        results[layer + 1]['id'] = ids_scaling.tolist()
-    except:
-        continue
+                results['twonn'][layer] = float(id_twoNN)
+                results['twonn_r'][layer] = float(r)
+            except IndexError:
+                continue
 
-all_results['gride'] = results
+        all_results.update(results.copy())
+        del results
+
+        # MLE
+        results = {'mle': [None for _ in reps]}
+        for layer, layer_reps in enumerate(reps):
+            try:
+                mle = skdim.id.MLE()
+                results['mle'][layer] = float(mle.fit_transform(layer_reps))
+            except IndexError:
+                continue
+
+        all_results.update(results.copy())
+        del results
+        del reps 
+
+        results_each_rs.append(all_results)
+    
+    # Aggregate over the rs.
+    agg_results = {}
+    for method in ['pca', 'pr', 'twonn', 'mle']:
+        all_rs = np.array([res[method] for res in results_each_rs])
+        agg_results[method + '_mean'] = list(np.nanmean(all_rs, axis=0))
+        agg_results[method + '_std'] = list(np.nanstd(all_rs, axis=0))
+
+    # save as sane or shuffled
+    RESULTS[mode] = agg_results
+
 
 # Save dictionary as JSON
-save_path = f'/home/echeng/llm_compositionality/data/saved_reps_post_finetune/prompts_{args.dataset}_step_{ckpt}_{args.method}.json'
+save_path = f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/ids_dataset_{args.dataset}_step_{args.step}.json'
 
 with open(save_path, 'w') as json_file:
-    json.dump(all_results, json_file)
+    json.dump(RESULTS, json_file)
+
+# Clean up that checkpoint
+for rs in range(5):
+    for mode in 'sane', 'shuffled':
+        os.remove(f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/checkpoint_{args.step}/{mode}_representations_{args.dataset}_words_correlated_rs{rs}.pt')

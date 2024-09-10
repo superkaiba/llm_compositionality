@@ -98,8 +98,8 @@ WORD_ORDER = [
     "jobs",
     "person_to_animal_verbs",
     "size_adjectives",
-    "colors",
     "texture_adjectives",
+    "colors",
     "animals",
     "person_to_person_verbs",
     "more_size_adjectives",
@@ -114,3 +114,5 @@ DETERMINANTS = { # Key is index in sentence
     8: "then",
     9: "the",
 }
+
+EPOCH_TO_CKPT = {0:0, 0.125: 25600, 0.25: 51200, 0.75:153600, 1.5:307200, 2.25:460800, 3:614400, 4: 819200, 5: 1024000, 6: 1228800}
