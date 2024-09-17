@@ -3,12 +3,12 @@
 #SBATCH -p alien
 #SBATCH -t 10-00:00:00
 #SBATCH --exclude=node044
-#SBATCH --mem=128G
+#SBATCH --mem=256G
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --qos=alien
-#SBATCH -o %j_bootstrap.o
-#SBATCH -e %j_bootstrap.e
+#SBATCH -o %j_finetune.o
+#SBATCH -e %j_finetune.e
 
 source  ~/.bashrc;
 conda activate control;

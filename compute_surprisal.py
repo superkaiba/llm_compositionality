@@ -10,20 +10,37 @@ parser = argparse.ArgumentParser(description='surprisal computation')
 # Data selection
 parser.add_argument('--model_name', type=str, default="EleutherAI/pythia-410m-deduped")
 parser.add_argument('--dataset', type=int, choices=[1, 2, 3, 4])
-parser.add_argument('--epoch', type=float, choices=[0, 0.125, 0.25, 1, 2, 3, 4]) # 0 = pretrained model
+parser.add_argument('--epoch', type=float, choices=[0, 0.125, 0.25, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) # 0 = pretrained model
 parser.add_argument('--batch_size', type=int, default=1)
 parser.add_argument('--device', type=str, default='cuda')
 args = parser.parse_args()
 print(args)
 
-epoch_to_ckpt = {0:0, 0.125: 25600, 0.25: 51200, 1:153600, 2:307200, 3:460800, 4:614400}
+epoch_to_ckpt = {
+0:0, 
+0.125: 25600, 
+0.25: 51200, 
+0.5: 102400, 
+0.75:153600, 
+1:204800, 
+2:409600, 
+3:614400, 
+4:819200, 
+5:1024000, 
+6:1228800, 
+7:1433600, 
+8:1638400, 
+9:1843200,
+10:2048000
+}
+
 ckpt = epoch_to_ckpt[args.epoch]
 if ckpt == 0:
     model_path = args.model_name
 else:
     model_path = f'/home/echeng/llm_compositionality/emcheng/{args.model_name}-finetuned-{args.dataset}-words-correlated/checkpoint-{ckpt}'
-train_dataset_path = f'/home/echeng/llm_compositionality/data/train_prompts_{args.dataset}_words_correlated.txt'
-test_dataset_path = f'/home/echeng/llm_compositionality/data/test_prompts_{args.dataset}_words_correlated.txt'
+train_dataset_path = f'/home/echeng/llm_compositionality/data/train_prompts_{args.dataset}_words_correlated_rs0.txt'
+test_dataset_path = f'/home/echeng/llm_compositionality/data/test_prompts_{args.dataset}_words_correlated_rs0.txt'
 
 # Load the model and tokenizer
 tokenizer = AutoTokenizer.from_pretrained(args.model_name,
@@ -93,5 +110,5 @@ results = {'per_token_train_surprisal_sequence': train_surp,
            'avg_per_token_test_surprisal_corpus': avg_test_surprisal
            }
 
-with open(f'/home/echeng/llm_compositionality/data/surprisals/{args.model_name.replace("/", "_")}_step{ckpt}_{args.dataset}_words_correlated.json', 'w') as f:
+with open(f'/home/echeng/llm_compositionality/data/surprisals/{args.model_name.replace("/", "_")}_step{ckpt}_{args.dataset}_words_correlated_rs0.json', 'w') as f:
     json.dump(results, f)

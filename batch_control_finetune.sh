@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for model in EleutherAI/pythia-410m-deduped
+for model in EleutherAI/pythia-70m-deduped EleutherAI/pythia-410m-deduped
 do
     export MODEL=$model;
     for dataset in 1 2 3 4
