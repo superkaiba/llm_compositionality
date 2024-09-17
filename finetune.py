@@ -4,23 +4,26 @@ import torch
 from datasets import load_dataset
 import argparse
 
+from finetuning_callbacks import *
+
 # Initialize the parser
 parser = argparse.ArgumentParser(description="Finetuning script")
 
 # Add arguments
 parser.add_argument('--dataset', type=int, help='correlated words 1 2 3 4')
 parser.add_argument('--model_name', type=str, default='EleutherAI/pythia-410m-deduped')
+parser.add_argument('--debug', type=int, default=0, help='1 if true')
 
 args = parser.parse_args()
 print(args)
 
-
+torch.manual_seed(42)
 MODEL = args.model_name
 DATASET = args.dataset
 
-# LOAD DATA
-train_fpath = f'/home/echeng/llm_compositionality/data/train_prompts_{args.dataset}_words_correlated.txt'
-val_fpath = f'/home/echeng/llm_compositionality/data/test_prompts_{args.dataset}_words_correlated.txt'
+# LOAD DATA (train on one random split, eventually evaluate on many)
+train_fpath = f'/home/echeng/llm_compositionality/data/train_prompts_{args.dataset}_words_correlated_rs0.txt'
+val_fpath = f'/home/echeng/llm_compositionality/data/test_prompts_{args.dataset}_words_correlated_rs0.txt'
 
 dataset = load_dataset('text', data_files={'train': train_fpath, 'val': val_fpath})
 
@@ -60,7 +63,7 @@ def group_texts(examples):
 
     return result
 
-# Example block size (set according to your model's requirement
+# Example block size (set according to model's requirement
 block_size = 20
 
 # Apply the grouping function to the tokenized dataset
@@ -71,23 +74,26 @@ lm_val_dataset.set_format("torch")
 
 # FINETUNE
 BATCH_SIZE = 1
+N_EPOCHS = 10
+total_steps = len(lm_train_dataset) // BATCH_SIZE * N_EPOCHS
+
 training_args = TrainingArguments(
         f"emcheng/{MODEL}-finetuned-{DATASET}-words-correlated",
         do_train=True,
         do_eval=True,
         learning_rate=2e-5,
-        # push_to_hub=True,
-        num_train_epochs=0.25, # change mid-flight
-        per_device_train_batch_size=1,
+        num_train_epochs=N_EPOCHS, 
+        per_device_train_batch_size=BATCH_SIZE,
         gradient_accumulation_steps=1,
-        per_device_eval_batch_size=1,
+        per_device_eval_batch_size=BATCH_SIZE,
         warmup_steps=500,
         weight_decay=0.01,
-        save_steps=0.5,
-        save_strategy='steps',
+        # save_steps=0.5,
+        save_strategy='epoch',
+        # save_only_model=True,
         report_to=[],
         fp16=True,  # Use mixed precision training if supported by your hardware
-
+        
 )
 
 
@@ -96,6 +102,9 @@ trainer = Trainer(
         args=training_args,
         train_dataset=lm_train_dataset,
         eval_dataset=lm_val_dataset,
+        callbacks=[SaveAtFractionalEpochCallback(save_fractions=[x / N_EPOCHS for x in [0.125, 0.25, 0.5, 0.75]], 
+                                             num_train_epochs=N_EPOCHS,
+                                             total_steps=total_steps)]
 )
 
 trainer.train()

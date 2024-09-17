@@ -13,13 +13,16 @@ parser = argparse.ArgumentParser(description='ID computation')
 # Data selection
 parser.add_argument('--model_name', type=str, default="EleutherAI/pythia-410m-deduped")
 parser.add_argument('--dataset', type=int, choices=[1, 2, 3, 4])
-parser.add_argument('--epoch', type=float, choices=[0, 0.125, 0.25, 1, 2, 3, 4]) # 0 = pretrained model
+parser.add_argument('--epoch', type=float, choices=[0, 
+                                                    0.125, 
+                                                    0.25, 
+                                                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) # 0 = pretrained model
 parser.add_argument('--batch_size', type=int, default=1)
 parser.add_argument('--device', type=str, default='cuda')
 args = parser.parse_args()
 print(args)
 
-epoch_to_ckpt = {0:0, 0.125: 25600, 0.25: 51200, 1:153600, 2:307200, 3:460800, 4:614400}
+epoch_to_ckpt = {0:0, 0.125: 25600, 0.25: 51200, 1:153600, 2:307200, 3:460800, 4:614400, 5:819200, 6:1024000, 7:1228800}
 ckpt = epoch_to_ckpt[args.epoch]
 if ckpt == 0:
     model_path = args.model_name
