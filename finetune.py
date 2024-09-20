@@ -10,7 +10,7 @@ from finetuning_callbacks import *
 parser = argparse.ArgumentParser(description="Finetuning script")
 
 # Add arguments
-parser.add_argument('--dataset', type=int, help='correlated words 1 2 3 4')
+parser.add_argument('--dataset', type=str, help='correlated words 1 2 3 4', choices=[1, 2, 3, 4, 'pile'])
 parser.add_argument('--model_name', type=str, default='EleutherAI/pythia-410m-deduped')
 parser.add_argument('--debug', type=int, default=0, help='1 if true')
 

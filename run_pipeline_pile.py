@@ -11,7 +11,11 @@ import os
 import torch
 from sklearn.decomposition import PCA
 import skdim
-from dadapy import data
+from dadapy import data as dada
+import pdb
+
+
+data_file = '/home/mbaroni/id/neurips_2024_submission/code_and_data/corpora/pile_sane_ds.txt'
 
 def ensure_dir(directory):
     if not os.path.exists(directory):
@@ -34,7 +38,7 @@ def compute_twonn(reps):
 
     for layer, layer_reps in enumerate(reps):
         try:
-            _data = data.Data(layer_reps)
+            _data = dada.Data(layer_reps)
             _data.remove_identical_points()
 
             # estimate ID
@@ -59,12 +63,10 @@ def compute_mle(reps):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run the pipeline also with prompt shuffling.")
-    # parser.add_argument("--shuffle", action="store_true", help="Shuffle the prompts")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
     parser.add_argument("--model_size", type=str, help="Model size")
     parser.add_argument("--exp_name", type=str, help="Experiment name")
     parser.add_argument("--checkpoint_step", type=int, help="Checkpoint step")
-    parser.add_argument("--n_words_correlated", type=int, nargs="+", help="Number of words correlated")
     parser.add_argument("--batch_size", type=int, help="Batch size", default=32)
     parser.add_argument("--device", type=str, help="Device", default="cuda")
     parser.add_argument("--data_dir", type=str, help="Data directory", default="/home/echeng/llm_compositionality/data")
@@ -81,83 +83,70 @@ model_name = f"EleutherAI/pythia-{args.model_size}-deduped" if args.model_size n
 
 base_dir = f"{args.results_path}"
 ensure_dir(base_dir)
-
-
-df = pd.DataFrame(columns=["index", "model_name", "checkpoint_step", "n_words_correlated", "method", "layer_num", "id"])
 checkpoint_step = args.checkpoint_step
 
-# for checkpoint_step in args.checkpoint_steps:
 model, tokenizer = get_model_and_tokenizer(model_name, checkpoint_step)
 
-for n_words_correlated in args.n_words_correlated:
-    RESULTS = {}
+RESULTS = {}
 
-    for shuffle in (True, False):
-
-        results_each_rs = []
-
-        for rs in range(5):
-            rep_dir = os.path.join(base_dir, model_name.replace("/", "_"), f"checkpoint_{checkpoint_step}", "representations")
-            ensure_dir(rep_dir)
-            rep_filename = f'{"shuffled" if shuffle else "sane"}_representations_{n_words_correlated}_words_correlated_rs{rs}.pt'
-            rep_path = os.path.join(rep_dir, rep_filename)
-
-            # we already did it.
-            if os.path.exists(rep_path): 
-                print('already done')
-                continue
-
-            train_data, test_data = load_prompts(n_words_correlated, args.data_dir, shuffle=shuffle, rs=rs)
-            data = train_data + test_data
-
-            if args.debug:
-                data = data[:1000]
-                
-            with torch.no_grad():
-                representations = get_reps_from_llm(model, tokenizer, data, args.device, args.batch_size)
-
-            reps = [rep.numpy().astype(float) for rep in representations][1:]
+results_each_rs = []
 
 
-            # Compute the ID
-            all_results = {}
+# Load prompts 
+all_data = []
+f = open(data_file)
+for line in f:
+    input_fields = line.strip("\n").split("\t")
+    all_data.append(input_fields[0])
+f.close()
 
-            # PCA
-            results = compute_pca(reps)
-            all_results.update(results.copy())
-            del results
-
-            # TWONN
-            results = compute_twonn(reps)
-            all_results.update(results.copy())
-            del results
-
-            # MLE
-            results = compute_mle(reps)
-            all_results.update(results.copy())
-            del results
-            del reps 
-
-            results_each_rs.append(all_results)
+for rs in tqdm(range(5)):
+    data = all_data[rs * 10000: (1+rs) * 10000]
+    # print('check what data looks like')
+    # pdb.set_trace()
         
-        # Aggregate over the rs.
-        agg_results = {}
-        for method in ['pca', 'pr', 'twonn', 'mle']:
-            all_rs = np.array([res[method] for res in results_each_rs])
-            agg_results[method + '_mean'] = list(np.nanmean(all_rs, axis=0))
-            agg_results[method + '_std'] = list(np.nanstd(all_rs, axis=0))
+    with torch.no_grad():
+        representations = get_reps_from_llm(model, tokenizer, data, args.device, args.batch_size)
 
-        # save as sane or shuffled
-        RESULTS[mode] = agg_results
+    reps = [rep.numpy().astype(float) for rep in representations][1:]
 
-        del representations 
-    
-    # save results
-    # Save dictionary as JSON
-    save_path = f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/ids_dataset_{args.dataset}_step_{args.checkpoint_step}.json'
 
-    with open(save_path, 'w') as json_file:
-        json.dump(RESULTS, json_file)
+    # Compute the ID
+    all_results = {}
+
+    # PCA
+    results = compute_pca(reps)
+    all_results.update(results.copy())
+    del results
+
+    # TWONN
+    results = compute_twonn(reps)
+    all_results.update(results.copy())
+    del results
+
+    # MLE
+    results = compute_mle(reps)
+    all_results.update(results.copy())
+
+    del results
+    del reps 
+    del representations 
+
+    results_each_rs.append(all_results)
+
+# Aggregate over the rs.
+for method in ['pca', 'pr', 'twonn', 'mle']:
+    all_rs = np.array([res[method] for res in results_each_rs])
+    RESULTS[method + '_mean'] = list(np.nanmean(all_rs, axis=0))
+    RESULTS[method + '_std'] = list(np.nanstd(all_rs, axis=0))
+
+
+# save results
+# Save dictionary as JSON
+save_path = f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/ids_dataset_pile_step_{args.checkpoint_step}.json'
+
+with open(save_path, 'w') as json_file:
+    json.dump(RESULTS, json_file)
 
 del model
 del tokenizer
