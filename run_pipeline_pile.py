@@ -13,6 +13,7 @@ from sklearn.decomposition import PCA
 import skdim
 from dadapy import data as dada
 import pdb
+import random
 
 
 data_file = '/home/mbaroni/id/neurips_2024_submission/code_and_data/corpora/pile_sane_ds.txt'
@@ -64,11 +65,12 @@ def compute_mle(reps):
 def parse_args():
     parser = argparse.ArgumentParser(description="Run the pipeline also with prompt shuffling.")
     parser.add_argument("--debug", action="store_true", help="Debug mode")
-    parser.add_argument("--model_size", type=str, help="Model size")
+    parser.add_argument("--model", type=str, help="Model size. llama, mistral, 14m, 70m etc for pythia")
     parser.add_argument("--exp_name", type=str, help="Experiment name")
-    parser.add_argument("--checkpoint_step", type=int, help="Checkpoint step")
+    parser.add_argument("--checkpoint_step", type=int, help="Checkpoint step", default=None)
     parser.add_argument("--batch_size", type=int, help="Batch size", default=32)
     parser.add_argument("--device", type=str, help="Device", default="cuda")
+    parser.add_argument('--shuffle', type=int, default=0)
     parser.add_argument("--data_dir", type=str, help="Data directory", default="/home/echeng/llm_compositionality/data")
     parser.add_argument("--results_path", type=str, help="Results path", default="/home/echeng/llm_compositionality/results_new")
 
@@ -77,12 +79,17 @@ def parse_args():
 args = parse_args()
 print(args)
 
-model_str = f"{args.model_size}" if args.model_size == '14m' else f"{args.model_size}-deduped"
-
-model_name = f"EleutherAI/pythia-{args.model_size}-deduped" if args.model_size not in ('14m',) else f"EleutherAI/pythia-{args.model_size}"
+if 'llama' not in args.model and 'mistral' not in args.model:
+    model_str = f"{args.model}" if args.model == '14m' else f"{args.model}-deduped"
+    model_name = f"EleutherAI/pythia-{args.model}-deduped" if args.model not in ('14m',) else f"EleutherAI/pythia-{args.model}"
+elif 'llama' == args.model:
+    model_name = 'meta-llama/Meta-Llama-3-8B'
+elif 'mistral' == args.model:
+    model_name = 'mistralai/Mistral-7B-v0.1'
 
 base_dir = f"{args.results_path}"
 ensure_dir(base_dir)
+
 checkpoint_step = args.checkpoint_step
 
 model, tokenizer = get_model_and_tokenizer(model_name, checkpoint_step)
@@ -97,19 +104,18 @@ all_data = []
 f = open(data_file)
 for line in f:
     input_fields = line.strip("\n").split("\t")
-    all_data.append(input_fields[0])
+    snippet = input_fields[0].split(" ")[:17]
+    if args.shuffle: random.shuffle(snippet)
+    all_data.append(" ".join(snippet))
 f.close()
 
 for rs in tqdm(range(5)):
     data = all_data[rs * 10000: (1+rs) * 10000]
-    # print('check what data looks like')
-    # pdb.set_trace()
         
     with torch.no_grad():
         representations = get_reps_from_llm(model, tokenizer, data, args.device, args.batch_size)
 
     reps = [rep.numpy().astype(float) for rep in representations][1:]
-
 
     # Compute the ID
     all_results = {}
@@ -143,7 +149,10 @@ for method in ['pca', 'pr', 'twonn', 'mle']:
 
 # save results
 # Save dictionary as JSON
-save_path = f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/ids_dataset_pile_step_{args.checkpoint_step}.json'
+if 'llama' in args.model or 'mistral' in args.model:
+    save_path = f'/home/echeng/llm_compositionality/results_new/{args.model}/ids_dataset_pile{"" if not args.shuffle else "_shuffled"}.json'
+else:
+    save_path = f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/ids_dataset_pile_step_{args.checkpoint_step}{"" if not args.shuffle else "_shuffled"}.json'
 
 with open(save_path, 'w') as json_file:
     json.dump(RESULTS, json_file)
