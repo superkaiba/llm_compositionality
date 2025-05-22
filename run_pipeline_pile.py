@@ -5,7 +5,6 @@ import sklearn
 import argparse
 import numpy as np
 from utils import *
-# from id_measures import *
 import pandas as pd
 import os
 import torch
@@ -16,7 +15,7 @@ import pdb
 import random
 
 
-data_file = '/home/mbaroni/id/neurips_2024_submission/code_and_data/corpora/pile_sane_ds.txt'
+data_file = 'pile_sane_ds.txt'
 
 def ensure_dir(directory):
     if not os.path.exists(directory):
@@ -71,8 +70,8 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, help="Batch size", default=32)
     parser.add_argument("--device", type=str, help="Device", default="cuda")
     parser.add_argument('--shuffle', type=int, default=0)
-    parser.add_argument("--data_dir", type=str, help="Data directory", default="/home/echeng/llm_compositionality/data")
-    parser.add_argument("--results_path", type=str, help="Results path", default="/home/echeng/llm_compositionality/results_new")
+    parser.add_argument("--data_dir", type=str, help="Data directory")
+    parser.add_argument("--results_path", type=str, help="Results path")
 
     return parser.parse_args()
 
@@ -99,7 +98,7 @@ RESULTS = {}
 results_each_rs = []
 
 
-# Load prompts 
+# Load prompts
 all_data = []
 f = open(data_file)
 for line in f:
@@ -111,7 +110,7 @@ f.close()
 
 for rs in tqdm(range(5)):
     data = all_data[rs * 10000: (1+rs) * 10000]
-        
+
     with torch.no_grad():
         representations = get_reps_from_llm(model, tokenizer, data, args.device, args.batch_size)
 
@@ -135,8 +134,8 @@ for rs in tqdm(range(5)):
     all_results.update(results.copy())
 
     del results
-    del reps 
-    del representations 
+    del reps
+    del representations
 
     results_each_rs.append(all_results)
 
@@ -150,9 +149,9 @@ for method in ['pca', 'pr', 'twonn', 'mle']:
 # save results
 # Save dictionary as JSON
 if 'llama' in args.model or 'mistral' in args.model:
-    save_path = f'/home/echeng/llm_compositionality/results_new/{args.model}/ids_dataset_pile{"" if not args.shuffle else "_shuffled"}.json'
+    save_path = f'{base_dir}/{args.model}/ids_dataset_pile{"" if not args.shuffle else "_shuffled"}.json'
 else:
-    save_path = f'/home/echeng/llm_compositionality/results_new/EleutherAI_pythia-{model_str}/ids_dataset_pile_step_{args.checkpoint_step}{"" if not args.shuffle else "_shuffled"}.json'
+    save_path = f'{base_dir}/EleutherAI_pythia-{model_str}/ids_dataset_pile_step_{args.checkpoint_step}{"" if not args.shuffle else "_shuffled"}.json'
 
 with open(save_path, 'w') as json_file:
     json.dump(RESULTS, json_file)

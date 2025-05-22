@@ -12,29 +12,20 @@ parser = argparse.ArgumentParser(description='ID computation')
 
 # Data selection
 parser.add_argument('--model_name', type=str, default="EleutherAI/pythia-410m-deduped")
+parser.add_argument('--base_path', type=str)
 parser.add_argument('--dataset', type=int, choices=[1, 2, 3, 4])
-parser.add_argument('--epoch', type=float, choices=[0, 
-                                                    0.125, 
-                                                    0.25, 
-                                                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) # 0 = pretrained model
 parser.add_argument('--batch_size', type=int, default=1)
 parser.add_argument('--device', type=str, default='cuda')
 args = parser.parse_args()
 print(args)
 
-epoch_to_ckpt = {0:0, 0.125: 25600, 0.25: 51200, 1:153600, 2:307200, 3:460800, 4:614400, 5:819200, 6:1024000, 7:1228800}
-ckpt = epoch_to_ckpt[args.epoch]
-if ckpt == 0:
-    model_path = args.model_name
-else:
-    model_path = f'/home/echeng/llm_compositionality/emcheng/{args.model_name}-finetuned-{args.dataset}-words-correlated/checkpoint-{ckpt}'
-dataset_path = f'/home/echeng/llm_compositionality/data/train_prompts_{args.dataset}_words_correlated.txt'
+model_path = args.model_name
+dataset_path = f'{args.base_path}/data/train_prompts_{args.dataset}_words_correlated.txt'
 
 # Load the model and tokenizer
 tokenizer = AutoTokenizer.from_pretrained(args.model_name,
                                           trust_remote_code=True,
                                           )
-# pdb.set_trace()
 model = AutoModelForCausalLM.from_pretrained(model_path,
                                              load_in_8bit=True,
                                             )
@@ -99,4 +90,4 @@ with torch.no_grad():
     representations = [torch.cat(batches, dim=0) for batches in representations]
     print('Layer 1 reps shape: ')
     print(representations[1].shape)
-    torch.save(representations, f'/home/echeng/llm_compositionality/data/saved_reps_post_finetune/prompts_{args.dataset}_ckpt_{ckpt}_reps.pt')
+    torch.save(representations, f'{args.base_path}/data/saved_reps_post_finetune/prompts_{args.dataset}_reps.pt')

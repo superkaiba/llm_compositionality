@@ -3,7 +3,7 @@ import os
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
-from constants_2 import *
+from constants import *
 import gc
 import random
 
@@ -31,7 +31,13 @@ def generate_prompt(
 
     prompt += word + " "
 
-  prompt = prompt[:-1] + "." # Replace final space
+  if shuffle:
+    prompt = prompt[:-1].split(" ")
+    random.shuffle(prompt)
+    prompt = " ".join(prompt)
+    prompt = prompt + '.'
+  else:
+    prompt = prompt[:-1] + "." # Replace final space
 
 
   return prompt
@@ -83,6 +89,16 @@ def last_token_rep(x, attention_mask, padding='right'):
     last_token_rep = x[torch.arange(x.size(0)), indices] if padding=='right' else x[torch.arange(x.size(0)), -1]
     return last_token_rep.cpu()
 
+def full_sequence(x, attention_mask, padding='right'):
+    """
+    Extracts the hidden representation of the last token in a sequence for a given layer (x).
+    """
+    seq_len = attention_mask.sum(dim=1)
+    indices = (seq_len - 1)
+
+    last_token_rep = x[torch.arange(x.size(0)), :indices] if padding=='right' else x[torch.arange(x.size(0)), -1]
+    return last_token_rep.cpu()
+
 def debug_memory():
     import collections, gc, resource, torch
     print('maxrss = {}'.format(
@@ -95,12 +111,13 @@ def debug_memory():
     for line in sorted(tensors.items()):
         print('{}\t{}'.format(*line))
 
+
 def get_reps_from_llm(
     model,
     tokenizer,
     data,
     device,
-    batch_size
+    batch_size,
 ):
   # Tokenize the text data
   encodings = encode_data(tokenizer,
@@ -118,17 +135,12 @@ def get_reps_from_llm(
         hiddens = output['hidden_states']
         pooled_output = tuple([last_token_rep(layer, batch['attention_mask'], padding=tokenizer.padding_side).cpu() for layer in hiddens])
         representations.append(pooled_output)
-        # torch.cuda.empty_cache()
-        # gc.collect()
-        # del output
-        # del hiddens
 
-        # debug_memory()
     # This step can be slow due to memory operations and data restructuring
     # Optimize by pre-allocating memory and using torch.stack instead of list comprehension and torch.cat
     num_layers = len(representations[0])
     num_samples = sum(batch[0].shape[0] for batch in representations)
-    
+
     optimized_representations = []
     for layer_idx in range(num_layers):
         layer_tensor = torch.empty((num_samples, representations[0][layer_idx].shape[1]), dtype=representations[0][layer_idx].dtype, device='cpu')
@@ -138,11 +150,9 @@ def get_reps_from_llm(
             layer_tensor[start_idx:start_idx+batch_size] = batch[layer_idx]
             start_idx += batch_size
         optimized_representations.append(layer_tensor)
-    
+
     representations = optimized_representations
-    
-    
-  
+
   return representations
 
 def calculate_ids(
@@ -152,11 +162,12 @@ def calculate_ids(
     # For each layer, get nonlinear ID estimate
   IDS = {} # {'id method name' : list of ids over layers}
   representations = [rep.to(torch.float16) for rep in representations]
+
   # Compute ID
   for method in methods:
       IDS[method] = []
       print(f'computing ID for {method}')
-      
+
       for layer_rep in tqdm(representations[1:]): # skip the positional embedding layer
           try:
             id = methods[method].fit_transform(layer_rep)
@@ -167,23 +178,14 @@ def calculate_ids(
 
   return IDS
 
-def get_model_and_tokenizer(model_name, model_step):
+def get_model_and_tokenizer(model_name, model_step=None):
     # Load the model and tokenizer
+    step = f"step{model_step}" if model_step is not None else None
+
     tokenizer = AutoTokenizer.from_pretrained(model_name,
-                                                # trust_remote_code=True,
-                                                # use_fast=True,
-                                                revision=f"step{model_step}",
-                                                # torch_dtype=torch.bfloat16,
-                                                # device_map="auto",
-                                                force_download=True
                                                 )
     model = AutoModelForCausalLM.from_pretrained(model_name,
-                                                # trust_remote_code=True,
                                                 load_in_8bit=True,
-                                                revision=f"step{model_step}",
-                                                # torch_dtype=torch.bfloat16,
-                                                # device_map="auto",
-                                                force_download=True
                                                 )
     # Some idiosyncrasies of models
     if 'Llama' in model_name:
@@ -195,7 +197,7 @@ def get_model_and_tokenizer(model_name, model_step):
     model.eval()
 
     return model, tokenizer
-    
+
 def run_pipeline(
     model,
     tokenizer,
@@ -231,15 +233,16 @@ def load_results(results_dir):
                                 results[model_name][checkpoint_step][n_words_correlated] = {}
                             if key not in results[model_name][checkpoint_step][n_words_correlated]:
                                 results[model_name][checkpoint_step][n_words_correlated][key] = {}
-                           
+
                             results[model_name][checkpoint_step][n_words_correlated][key] = data['ids'].item()[key]
     return results
 
-def load_prompts(n_words_correlated, data_dir, shuffle=False, rs=None):
+def load_prompts(n_words_correlated, data_dir, shuffle=False, rs=None, sequence_length=None):
     rs_str = '' if rs is None else f"_rs{rs}"
-    with open(f'{data_dir}/train_prompts_{n_words_correlated}_words_correlated{rs_str}.txt', 'r') as f:
+    seq_str = '' if sequence_length is None else f'length_{sequence_length}_'
+    with open(f'{data_dir}/train_prompts_{seq_str}{n_words_correlated}_words_correlated{rs_str}.txt', 'r') as f:
         train_prompts = f.read().splitlines()
-    with open(f'{data_dir}/test_prompts_{n_words_correlated}_words_correlated{rs_str}.txt', 'r') as f:
+    with open(f'{data_dir}/test_prompts_{seq_str}{n_words_correlated}_words_correlated{rs_str}.txt', 'r') as f:
         test_prompts = f.read().splitlines()
     if shuffle:
         for i in range(len(train_prompts)):
@@ -251,6 +254,6 @@ def load_prompts(n_words_correlated, data_dir, shuffle=False, rs=None):
             random.shuffle(test_prompts[i])
             test_prompts[i] = " ".join(test_prompts[i])
 
-    
+
     return train_prompts, test_prompts
 
